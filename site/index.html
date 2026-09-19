@@ -234,7 +234,18 @@
         <span class="dot"></span><span class="dot"></span><span class="dot"></span>
         <span class="term-title">howzo — zsh</span>
       </div>
-      <div class="term-body" id="termBody"></div>
+      <div class="term-body" id="termBody">
+        <div><span class="t-prompt">$ </span><span class="t-desc">howzo kill process on port 8080</span></div>
+        <div><span class="t-tool">kill-port</span><span class="t-meta">  (npx)</span></div>
+        <div class="t-desc">  Kill process running on given port</div>
+        <div> </div>
+        <div><span class="t-tool">net-server</span><span class="t-meta">  (system)</span></div>
+        <div class="t-help">  | net-server HTTP port 8080 port 8443/ssl ipv '*' server_type PreFork --SSL_key_file=my.key</div>
+        <div class="t-help">  | The net-server program gives a simple way to test out code and try port</div>
+        <div> </div>
+        <div class="t-note">  (partial match - no tool advertises all terms)</div>
+        <span class="cursor"></span>
+      </div>
     </div>
 
     <div class="demo-tabs" id="demoTabs"></div>
@@ -351,18 +362,19 @@
   });
 
   /* ---- recorded demo sessions (real output from a 1,219-tool install) ---- */
+  /* One entry per visual line. {tool, meta} renders "name  (source)" on one line. */
   var SESSIONS = [
     {
       label: "kill process on port 8080",
       prompt: "howzo kill process on port 8080",
       lines: [
-        { c: "t-tool", t: "kill-port" }, { c: "t-meta", t: "  (npx)" },
+        { tool: "kill-port", meta: "  (npx)" },
         { c: "t-desc", t: "  Kill process running on given port" },
-        { c: "", t: "" },
-        { c: "t-tool", t: "net-server" }, { c: "t-meta", t: "  (system)" },
+        { c: "", t: " " },
+        { tool: "net-server", meta: "  (system)" },
         { c: "t-help", t: "  | net-server HTTP port 8080 port 8443/ssl ipv '*' server_type PreFork --SSL_key_file=my.key" },
         { c: "t-help", t: "  | The net-server program gives a simple way to test out code and try port" },
-        { c: "", t: "" },
+        { c: "", t: " " },
         { c: "t-note", t: "  (partial match - no tool advertises all terms)" }
       ]
     },
@@ -370,14 +382,14 @@
       label: "list open ports",
       prompt: "howzo list open ports",
       lines: [
-        { c: "t-tool", t: "nc" }, { c: "t-meta", t: "  (system)" },
+        { tool: "nc", meta: "  (system)" },
         { c: "t-help", t: "  | listen on arbitrary TCP and UDP ports, do port scanning, and deal with" },
         { c: "t-help", t: "  | nc – arbitrary TCP and UDP connections and listens" },
-        { c: "", t: "" },
-        { c: "t-tool", t: "fuser" }, { c: "t-meta", t: "  (system)" },
+        { c: "", t: " " },
+        { tool: "fuser", meta: "  (system)" },
         { c: "t-help", t: "  | fuser - list process IDs of all processes that have one or more files open" },
-        { c: "", t: "" },
-        { c: "t-tool", t: "lsof" }, { c: "t-meta", t: "  (system)" },
+        { c: "", t: " " },
+        { tool: "lsof", meta: "  (system)" },
         { c: "t-help", t: "  | lsof - list open files" }
       ]
     },
@@ -385,7 +397,7 @@
       label: "whatis crwl",
       prompt: "howzo whatis crwl",
       lines: [
-        { c: "t-tool", t: "crwl" }, { c: "t-meta", t: "  (pipx, 0.9.2)" },
+        { tool: "crwl", meta: "  (pipx, 0.9.2)" },
         { c: "t-desc", t: "  (binary of pipx crawl4ai)" },
         { c: "t-help", t: "  | Usage: crwl crawl [OPTIONS] URL" },
         { c: "t-help", t: "  help:" },
@@ -412,6 +424,21 @@
 
   function esc(s) { return s; } /* demo strings are our own; kept plain */
 
+  function makeLine(e) {
+    var d = document.createElement("div");
+    if (e.tool) {
+      var a = document.createElement("span");
+      a.className = "t-tool"; a.textContent = e.tool;
+      var m = document.createElement("span");
+      m.className = "t-meta"; m.textContent = e.meta || "";
+      d.appendChild(a); d.appendChild(m);
+    } else {
+      d.className = e.c || "";
+      d.textContent = e.t || "";
+    }
+    return d;
+  }
+
   function renderSession(i, animate) {
     clearTimers();
     body.innerHTML = "";
@@ -421,41 +448,33 @@
     });
 
     var promptLine = document.createElement("div");
-    promptLine.innerHTML = '<span class="t-prompt">$ </span><span class="t-desc">' + esc(s.prompt) + "</span>";
     body.appendChild(promptLine);
 
     var rest = s.lines;
     function showRest(k) {
-      for (; k < rest.length; k++) {
-        var d = document.createElement("div");
-        d.className = rest[k].c;
-        d.textContent = rest[k].t;
-        body.appendChild(d);
-      }
+      for (; k < rest.length; k++) { body.appendChild(makeLine(rest[k])); }
       var cur = document.createElement("span");
       cur.className = "cursor";
       body.appendChild(cur);
-      later(function () { showSession((i + 1) % SESSIONS.length, true); }, 4200);
+      later(function () { showSession((i + 1) % SESSIONS.length, true); }, 3400);
     }
     function step(k) {
       if (k >= rest.length) { showRest(k); return; }
-      var d = document.createElement("div");
-      d.className = rest[k].c;
-      d.textContent = rest[k].t;
-      body.appendChild(d);
-      later(function () { step(k + 1); }, 90);
+      body.appendChild(makeLine(rest[k]));
+      later(function () { step(k + 1); }, 45);
     }
 
-    if (!animate || reduce) { showRest(0); }
-    else {
+    if (!animate || reduce) {
+      promptLine.innerHTML = '<span class="t-prompt">$ </span><span class="t-desc">' + esc(s.prompt) + "</span>";
+      showRest(0);
+    } else {
       /* type the prompt first */
-      promptLine.innerHTML = '<span class="t-prompt">$ </span><span class="t-desc"></span><span class="cursor"></span>';
       var typed = "";
       function typePrompt() {
         typed = s.prompt.slice(0, typed.length + 1);
-        promptLine.innerHTML = '<span class="t-prompt">$ </span><span class="t-desc">' + esc(typed) + "</span>";
-        if (typed.length < s.prompt.length) { later(typePrompt, 26); }
-        else { later(function () { step(0); }, 220); }
+        promptLine.innerHTML = '<span class="t-prompt">$ </span><span class="t-desc">' + esc(typed) + '</span><span class="cursor"></span>';
+        if (typed.length < s.prompt.length) { later(typePrompt, 18); }
+        else { later(function () { step(0); }, 200); }
       }
       typePrompt();
     }
