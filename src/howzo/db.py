@@ -1,0 +1,74 @@
+"""SQLite + FTS5 inventory store."""
+import os
+import sqlite3
+import time
+
+from . import config
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS tools (
+  id INTEGER PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  source TEXT,
+  version TEXT,
+  path TEXT,
+  oneliner TEXT DEFAULT '',
+  when_to_use TEXT DEFAULT '',
+  help_excerpt TEXT DEFAULT '',
+  help_captured_at TEXT,
+  scanned_at TEXT
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS tools_fts USING fts5(
+  name, oneliner, when_to_use, help_excerpt, content='tools', content_rowid='id',
+  tokenize='porter unicode61'
+);
+CREATE TRIGGER IF NOT EXISTS tools_ai AFTER INSERT ON tools BEGIN
+  INSERT INTO tools_fts(rowid, name, oneliner, when_to_use, help_excerpt)
+  VALUES (new.id, new.name, new.oneliner, new.when_to_use, new.help_excerpt);
+END;
+CREATE TRIGGER IF NOT EXISTS tools_ad AFTER DELETE ON tools BEGIN
+  INSERT INTO tools_fts(tools_fts, rowid, name, oneliner, when_to_use, help_excerpt)
+  VALUES ('delete', old.id, old.name, old.oneliner, old.when_to_use, old.help_excerpt);
+END;
+CREATE TRIGGER IF NOT EXISTS tools_au AFTER UPDATE ON tools BEGIN
+  INSERT INTO tools_fts(tools_fts, rowid, name, oneliner, when_to_use, help_excerpt)
+  VALUES ('delete', old.id, old.name, old.oneliner, old.when_to_use, old.help_excerpt);
+  INSERT INTO tools_fts(rowid, name, oneliner, when_to_use, help_excerpt)
+  VALUES (new.id, new.name, new.oneliner, new.when_to_use, new.help_excerpt);
+END;
+"""
+
+
+def db(path=None):
+    """Open (creating if needed) the inventory DB at path (default: config.db_path())."""
+    p = path or config.db_path()
+    d = os.path.dirname(p) or "."
+    os.makedirs(d, exist_ok=True)
+    try:
+        c = sqlite3.connect(p)
+        c.row_factory = sqlite3.Row
+        c.executescript(SCHEMA)
+        c.execute("SELECT count(*) FROM tools")  # probe
+        return c
+    except sqlite3.DatabaseError:
+        # corrupted db (e.g. after a schema change) -> wipe and rebuild from a scan
+        print(f"  warning: db corrupted, rebuilding ({p})")
+        for f in os.listdir(d):
+            if f.startswith("howzo.db"):
+                os.remove(os.path.join(d, f))
+        c = sqlite3.connect(p)
+        c.row_factory = sqlite3.Row
+        c.executescript(SCHEMA)
+        return c
+
+
+def upsert(c, name, source, version, path, oneliner):
+    """Insert a tool row, or update version/path on conflict.
+
+    An empty new oneliner never clobbers an existing description.
+    """
+    c.execute("INSERT INTO tools(name, source, version, path, oneliner, scanned_at) VALUES(?,?,?,?,?,?) "
+              "ON CONFLICT(name) DO UPDATE SET source=excluded.source, version=excluded.version, "
+              "path=excluded.path, oneliner=CASE WHEN excluded.oneliner != '' THEN excluded.oneliner ELSE tools.oneliner END, "
+              "scanned_at=excluded.scanned_at",
+              (name, source, version, path, oneliner, time.strftime("%Y-%m-%d")))

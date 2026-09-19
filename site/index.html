@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>howzo — knows your machine</title>
+<meta name="description" content="howzo is a free, local, zero-model command router. Ask 'how do I X' in English and get the tool that's actually installed on your machine.">
+<style>
+  :root {
+    --bg: #0b0e0d;
+    --panel: #101413;
+    --panel-2: #141a18;
+    --line: #22302b;
+    --line-soft: #1a2420;
+    --text: #e4eeea;
+    --dim: #8ba39a;
+    --dimmer: #5f756d;
+    --accent: #45d6a5;
+    --accent-ink: #06231a;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent); color: var(--accent-ink); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- nav ---------- */
+  .nav {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 54px; }
+  .brand { font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+  .brand::before { content: "$ "; color: var(--accent); }
+  .nav-links { display: flex; gap: 22px; font-size: 13px; }
+  .nav-links a { color: var(--dim); }
+  .nav-links a:hover { color: var(--text); text-decoration: none; }
+  .nav-links a.ext { color: var(--accent); }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 72px 0 40px; }
+  .kicker { color: var(--accent); font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px; }
+  h1 {
+    font-size: clamp(40px, 6.4vw, 68px);
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    font-weight: 700;
+    max-width: 14ch;
+  }
+  .sub { color: var(--dim); font-size: 17px; max-width: 52ch; margin-top: 18px; }
+  .sub b { color: var(--text); font-weight: 400; }
+
+  .install-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 28px; }
+  .cmdline {
+    display: inline-flex; align-items: center; gap: 12px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 10px 14px; font-size: 14px;
+  }
+  .cmdline .dollar { color: var(--accent); }
+  .copy {
+    font-family: var(--mono); font-size: 12px; cursor: pointer;
+    background: transparent; color: var(--dim);
+    border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px;
+    transition: all 0.12s ease;
+  }
+  .copy:hover { color: var(--text); border-color: var(--dim); }
+  .copy:active { transform: translateY(1px); }
+  .copy.ok { color: var(--accent); border-color: var(--accent); }
+  .hint { color: var(--dimmer); font-size: 13px; }
+
+  /* ---------- terminal ---------- */
+  .term {
+    margin-top: 36px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: 0 24px 60px -32px rgba(0, 0, 0, 0.8);
+  }
+  .term-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; border-bottom: 1px solid var(--line-soft);
+    background: var(--panel-2);
+  }
+  .term-bar .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+  .term-bar .dot:first-child { background: #3a4a44; }
+  .term-title { margin-left: 8px; font-size: 12px; color: var(--dimmer); }
+  .term-body {
+    padding: 18px 20px 20px;
+    font-size: 13.5px;
+    line-height: 1.55;
+    min-height: 300px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .t-prompt { color: var(--accent); }
+  .t-tool { color: var(--text); font-weight: 700; }
+  .t-meta { color: var(--dimmer); }
+  .t-desc { color: var(--text); }
+  .t-help { color: var(--dim); }
+  .t-note { color: var(--dimmer); }
+  .cursor {
+    display: inline-block; width: 8px; height: 15px;
+    background: var(--accent); vertical-align: text-bottom;
+    animation: blink 1.06s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .demo-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .demo-tab {
+    font-family: var(--mono); font-size: 12.5px; cursor: pointer;
+    background: transparent; color: var(--dim);
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px;
+    transition: all 0.12s ease;
+  }
+  .demo-tab:hover { color: var(--text); border-color: var(--dim); }
+  .demo-tab:active { transform: translateY(1px); }
+  .demo-tab.active { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .term-note { margin-top: 10px; font-size: 12px; color: var(--dimmer); }
+
+  /* ---------- sections ---------- */
+  .section { padding: 56px 0; border-top: 1px solid var(--line-soft); }
+  .section h2 { font-size: 22px; letter-spacing: -0.02em; margin-bottom: 6px; }
+  .section .lede { color: var(--dim); max-width: 62ch; margin-bottom: 28px; }
+
+  .steps { list-style: none; counter-reset: step; }
+  .steps li {
+    display: grid; grid-template-columns: 64px 150px 1fr; gap: 16px;
+    padding: 18px 0; border-top: 1px solid var(--line-soft);
+    align-items: baseline;
+  }
+  .steps li:first-child { border-top: none; }
+  .steps .num { color: var(--accent); font-size: 13px; }
+  .steps .name { font-weight: 700; letter-spacing: -0.01em; }
+  .steps .body { color: var(--dim); font-size: 14px; }
+  .steps .body code { color: var(--text); background: var(--panel); padding: 1px 6px; border-radius: 4px; font-size: 13px; }
+
+  .srcs { display: grid; grid-template-columns: 1fr 1fr; gap: 0 40px; }
+  .src-row {
+    display: grid; grid-template-columns: 110px 1fr; gap: 14px;
+    padding: 11px 0; border-top: 1px solid var(--line-soft);
+    font-size: 13.5px; align-items: baseline;
+  }
+  .src-row dt { color: var(--accent); }
+  .src-row dd { color: var(--dim); }
+
+  .stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+    background: var(--line-soft); border: 1px solid var(--line-soft);
+    border-radius: var(--radius); overflow: hidden; margin-top: 26px;
+  }
+  .stat { background: var(--panel); padding: 16px 18px; }
+  .stat .v { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+  .stat .k { font-size: 12px; color: var(--dimmer); margin-top: 2px; }
+
+  pre.code {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 16px 18px;
+    font-size: 13px; line-height: 1.55; overflow-x: auto;
+    position: relative;
+  }
+  pre.code .copy { position: absolute; top: 10px; right: 10px; }
+  .cmt { color: var(--dimmer); }
+  .str { color: var(--accent); }
+
+  table.cmds { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table.cmds td { padding: 10px 12px 10px 0; border-top: 1px solid var(--line-soft); vertical-align: top; }
+  table.cmds tr:first-child td { border-top: none; }
+  table.cmds td:first-child { color: var(--accent); white-space: nowrap; width: 34%; }
+  table.cmds td { color: var(--dim); }
+
+  footer { border-top: 1px solid var(--line-soft); padding: 28px 0 44px; margin-top: 24px; }
+  .foot { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; font-size: 12.5px; color: var(--dimmer); }
+
+  @media (max-width: 720px) {
+    .steps li { grid-template-columns: 44px 1fr; }
+    .steps .body { grid-column: 2; }
+    .srcs { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: 1fr 1fr; }
+    .nav-links { gap: 14px; font-size: 12px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cursor { animation: none; }
+    html { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top">howzo</a>
+    <nav class="nav-links">
+      <a href="#how">how it works</a>
+      <a href="#indexes">indexes</a>
+      <a href="#mcp">mcp</a>
+      <a href="#commands">commands</a>
+      <a class="ext" href="https://github.com/sohail/howzo" target="_blank" rel="noopener">github ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top" class="wrap">
+
+  <section class="hero">
+    <p class="kicker">a local, zero-model command router</p>
+    <h1>Knows your machine.</h1>
+    <p class="sub">Ask <b>"how do I X"</b> in English. Get the tool that's actually
+    installed — not a guess from the internet.</p>
+
+    <div class="install-row">
+      <span class="cmdline">
+        <span class="dollar">$</span> pipx install howzo
+        <button class="copy" data-copy="pipx install howzo">copy</button>
+      </span>
+      <span class="hint">then run&nbsp; <b>howzo scan</b> &nbsp;·&nbsp; Windows: <b>py -m pipx install howzo</b></span>
+    </div>
+
+    <div class="term">
+      <div class="term-bar">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="term-title">howzo — zsh</span>
+      </div>
+      <div class="term-body" id="termBody"></div>
+    </div>
+
+    <div class="demo-tabs" id="demoTabs"></div>
+    <p class="term-note">Recorded from a real install — 1,219 tools indexed. Install it and your machine writes the show.</p>
+  </section>
+
+  <section class="section" id="how">
+    <h2>How it works</h2>
+    <p class="lede">No LLM, no embeddings, no cloud. A search index over what you already have.</p>
+    <ol class="steps">
+      <li>
+        <span class="num">01</span>
+        <span class="name">scan</span>
+        <span class="body">Indexes everything actually installed: brew, npm, pipx, uv, system binaries with man pages, your own scripts, even <code>npx</code> packages you've used in the past. ~1,200 tools, 2–3 minutes, once.</span>
+      </li>
+      <li>
+        <span class="num">02</span>
+        <span class="name">match</span>
+        <span class="body">FTS5 BM25 + a word-boundary token-coverage re-rank. <code>kill</code> never matches <code>skill</code>; <code>port</code> never matches <code>report</code>.</span>
+      </li>
+      <li>
+        <span class="num">03</span>
+        <span class="name">answer</span>
+        <span class="body">The top tool, its one-liner, and the help lines most relevant to your question. Offline, ~20 MB of RAM, standard library only.</span>
+      </li>
+    </ol>
+  </section>
+
+  <section class="section" id="indexes">
+    <h2>What it indexes</h2>
+    <p class="lede">The differentiator: howzo indexes <u>your</u> machine, not a static corpus of popular commands. If it's installed, howzo knows it.</p>
+    <dl class="srcs">
+      <div class="src-row"><dt>brew</dt><dd>formulae, versions, descriptions</dd></div>
+      <div class="src-row"><dt>npm</dt><dd>global packages + the binaries they install</dd></div>
+      <div class="src-row"><dt>pipx</dt><dd>packages + provided binaries (crwl → crawl4ai)</dd></div>
+      <div class="src-row"><dt>uv</dt><dd>uv tool installs</dd></div>
+      <div class="src-row"><dt>scripts</dt><dd>~/bin and ~/.local/bin, one-liner from the script header</dd></div>
+      <div class="src-row"><dt>system</dt><dd>/usr/bin + /usr/sbin + /usr/local/bin via man pages (Unix)</dd></div>
+      <div class="src-row"><dt>path</dt><dd>executables on PATH — System32, Program Files (Windows)</dd></div>
+      <div class="src-row"><dt>npx</dt><dd>npx / bunx / pnpm dlx packages mined from shell history</dd></div>
+      <div class="src-row"><dt>custom</dt><dd>anything you register with howzo add — internal CLIs and the like</dd></div>
+    </dl>
+  </section>
+
+  <section class="section">
+    <h2>Zero models. Fully local.</h2>
+    <p class="lede">No accounts, no API keys, no telemetry. The network is only touched while scanning, to fetch package descriptions from npm and PyPI. Answering is 100% offline — your questions never leave the box.</p>
+    <div class="stats">
+      <div class="stat"><div class="v">0</div><div class="k">models or dependencies (stdlib only)</div></div>
+      <div class="stat"><div class="v">~1,200</div><div class="k">tools on a typical machine</div></div>
+      <div class="stat"><div class="v">20 MB</div><div class="k">RAM, SQLite + FTS5</div></div>
+      <div class="stat"><div class="v">3</div><div class="k">platforms: macOS · Linux · Windows</div></div>
+    </div>
+  </section>
+
+  <section class="section" id="mcp">
+    <h2>Speaks MCP</h2>
+    <p class="lede">Point any MCP client at howzo mcp and your assistant can ask the same questions you can: howzo_ask, howzo_whatis, howzo_list over stdio.</p>
+    <pre class="code"><button class="copy" data-copy='{
+  "mcpServers": {
+    "howzo": { "command": "howzo", "args": ["mcp"] }
+  }
+}'>{
+  <span class="cmt">// mcp config</span>
+  "mcpServers": {
+    "howzo": { "command": "howzo", "args": ["mcp"] }
+  }
+}</button></pre>
+  </section>
+
+  <section class="section" id="commands">
+    <h2>Commands</h2>
+    <p class="lede">One binary, eight verbs.</p>
+    <table class="cmds">
+      <tr><td>howzo &lt;query&gt;</td><td>ask in plain English (implicit ask)</td></tr>
+      <tr><td>howzo scan [--deep]</td><td>rebuild the inventory; --deep also captures --help text for every tool</td></tr>
+      <tr><td>howzo ask "query"</td><td>same as &lt;query&gt;</td></tr>
+      <tr><td>howzo whatis &lt;tool&gt;</td><td>reverse lookup: what is this tool for?</td></tr>
+      <tr><td>howzo deep &lt;tool&gt;</td><td>capture --help / man for one tool on demand</td></tr>
+      <tr><td>howzo add &lt;name&gt; "desc"</td><td>register a tool the scanner can't see (survives rescans)</td></tr>
+      <tr><td>howzo list [--source S]</td><td>browse the inventory</td></tr>
+      <tr><td>howzo mcp</td><td>run as a stdio MCP server</td></tr>
+      <tr><td>howzo db</td><td>show the database path</td></tr>
+    </table>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span>MIT · Python 3.9+ · stdlib only</span>
+    <span>howzo — knows your machine</span>
+    <a href="https://github.com/sohail/howzo" target="_blank" rel="noopener">github.com/sohail/howzo ↗</a>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---- copy buttons ---- */
+  document.querySelectorAll(".copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var text = btn.getAttribute("data-copy");
+      function done() {
+        btn.textContent = "copied";
+        btn.classList.add("ok");
+        setTimeout(function () { btn.textContent = "copy"; btn.classList.remove("ok"); }, 1400);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else { done(); }
+    });
+  });
+
+  /* ---- recorded demo sessions (real output from a 1,219-tool install) ---- */
+  var SESSIONS = [
+    {
+      label: "kill process on port 8080",
+      prompt: "howzo kill process on port 8080",
+      lines: [
+        { c: "t-tool", t: "kill-port" }, { c: "t-meta", t: "  (npx)" },
+        { c: "t-desc", t: "  Kill process running on given port" },
+        { c: "", t: "" },
+        { c: "t-tool", t: "net-server" }, { c: "t-meta", t: "  (system)" },
+        { c: "t-help", t: "  | net-server HTTP port 8080 port 8443/ssl ipv '*' server_type PreFork --SSL_key_file=my.key" },
+        { c: "t-help", t: "  | The net-server program gives a simple way to test out code and try port" },
+        { c: "", t: "" },
+        { c: "t-note", t: "  (partial match - no tool advertises all terms)" }
+      ]
+    },
+    {
+      label: "list open ports",
+      prompt: "howzo list open ports",
+      lines: [
+        { c: "t-tool", t: "nc" }, { c: "t-meta", t: "  (system)" },
+        { c: "t-help", t: "  | listen on arbitrary TCP and UDP ports, do port scanning, and deal with" },
+        { c: "t-help", t: "  | nc – arbitrary TCP and UDP connections and listens" },
+        { c: "", t: "" },
+        { c: "t-tool", t: "fuser" }, { c: "t-meta", t: "  (system)" },
+        { c: "t-help", t: "  | fuser - list process IDs of all processes that have one or more files open" },
+        { c: "", t: "" },
+        { c: "t-tool", t: "lsof" }, { c: "t-meta", t: "  (system)" },
+        { c: "t-help", t: "  | lsof - list open files" }
+      ]
+    },
+    {
+      label: "whatis crwl",
+      prompt: "howzo whatis crwl",
+      lines: [
+        { c: "t-tool", t: "crwl" }, { c: "t-meta", t: "  (pipx, 0.9.2)" },
+        { c: "t-desc", t: "  (binary of pipx crawl4ai)" },
+        { c: "t-help", t: "  | Usage: crwl crawl [OPTIONS] URL" },
+        { c: "t-help", t: "  help:" },
+        { c: "t-help", t: "     Usage: crwl crawl [OPTIONS] URL" },
+        { c: "t-help", t: "       Crawl a website and extract content" },
+        { c: "t-help", t: "     Options:" },
+        { c: "t-help", t: "       -B, --browser-config PATH       Browser config file (YAML/JSON)" },
+        { c: "t-help", t: "       -C, --crawler-config PATH       Crawler config file (YAML/JSON)" }
+      ]
+    }
+  ];
+
+  var body = document.getElementById("termBody");
+  var tabsEl = document.getElementById("demoTabs");
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var current = 0;
+  var timers = [];
+
+  function clearTimers() {
+    timers.forEach(clearTimeout);
+    timers = [];
+  }
+  function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+
+  function esc(s) { return s; } /* demo strings are our own; kept plain */
+
+  function renderSession(i, animate) {
+    clearTimers();
+    body.innerHTML = "";
+    var s = SESSIONS[i];
+    document.querySelectorAll(".demo-tab").forEach(function (b, j) {
+      b.classList.toggle("active", j === i);
+    });
+
+    var promptLine = document.createElement("div");
+    promptLine.innerHTML = '<span class="t-prompt">$ </span><span class="t-desc">' + esc(s.prompt) + "</span>";
+    body.appendChild(promptLine);
+
+    var rest = s.lines;
+    function showRest(k) {
+      for (; k < rest.length; k++) {
+        var d = document.createElement("div");
+        d.className = rest[k].c;
+        d.textContent = rest[k].t;
+        body.appendChild(d);
+      }
+      var cur = document.createElement("span");
+      cur.className = "cursor";
+      body.appendChild(cur);
+      later(function () { showSession((i + 1) % SESSIONS.length, true); }, 4200);
+    }
+    function step(k) {
+      if (k >= rest.length) { showRest(k); return; }
+      var d = document.createElement("div");
+      d.className = rest[k].c;
+      d.textContent = rest[k].t;
+      body.appendChild(d);
+      later(function () { step(k + 1); }, 90);
+    }
+
+    if (!animate || reduce) { showRest(0); }
+    else {
+      /* type the prompt first */
+      promptLine.innerHTML = '<span class="t-prompt">$ </span><span class="t-desc"></span><span class="cursor"></span>';
+      var typed = "";
+      function typePrompt() {
+        typed = s.prompt.slice(0, typed.length + 1);
+        promptLine.innerHTML = '<span class="t-prompt">$ </span><span class="t-desc">' + esc(typed) + "</span>";
+        if (typed.length < s.prompt.length) { later(typePrompt, 26); }
+        else { later(function () { step(0); }, 220); }
+      }
+      typePrompt();
+    }
+  }
+  function showSession(i, animate) { current = i; renderSession(i, animate); }
+
+  SESSIONS.forEach(function (s, i) {
+    var b = document.createElement("button");
+    b.className = "demo-tab";
+    b.textContent = "$ " + s.label;
+    b.addEventListener("click", function () { showSession(i, true); });
+    tabsEl.appendChild(b);
+  });
+
+  showSession(0, true);
+})();
+</script>
+</body>
+</html>

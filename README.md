@@ -1,0 +1,135 @@
+# howzo
+
+**Knows your machine.** Ask "how do I X" in English → get the tool that is actually installed on *this* machine, plus a runnable command.
+
+howzo is a free, local, **zero-model** command router. It indexes the tools that are actually installed on your box — brew, npm, pipx, uv, system binaries, your own scripts — and answers plain-English questions by matching against that inventory. No accounts, no API keys, no telemetry, and no network access when answering.
+
+## Why
+
+Generic command helpers (ShellGPT, mang.sh, Atuin) index a static corpus of popular commands. howzo indexes *your machine* instead — the exact tools, versions, and help text you actually have. If it's installed, howzo knows it; if it isn't, howzo doesn't waste your time suggesting it.
+
+## Install
+
+Requires Python 3.9+. Runtime dependencies: **none** (stdlib only).
+
+### macOS / Linux
+
+```sh
+pipx install howzo        # or: uv tool install howzo
+```
+
+### Windows
+
+```powershell
+py -m pipx install howzo  # or: uv tool install howzo
+```
+
+### From source
+
+```sh
+git clone https://github.com/sohail/howzo.git
+pipx install --editable howzo    # or: uv tool install --editable howzo
+```
+
+### First run
+
+```sh
+howzo scan     # one-time: build your machine's inventory (~2-3 min)
+```
+
+Rescans are safe: captured help text, `when_to_use` notes, custom entries, and mined npx packages are preserved.
+
+## Usage
+
+```console
+$ howzo "how do I rotate a pdf"
+pdfq  (pipx, 1.0)
+  rotate and convert pdf files
+
+$ howzo whatis crwl
+crwl  (pipx, 0.3.1)
+  (binary of pipx crawl4ai)
+
+$ howzo kill a process on port 8080
+lsof  (brew, 9.9)
+  list open files and network connections
+```
+
+### Commands
+
+| Command | What it does |
+|---|---|
+| `howzo <query>` | Ask in plain English (implicit `ask`) |
+| `howzo scan [--deep]` | Rebuild inventory; `--deep` also captures `--help` text for every tool |
+| `howzo ask "query"` | Same as `<query>` |
+| `howzo whatis <tool>` | Reverse lookup: what is this tool for? |
+| `howzo deep <tool>` | Capture `--help`/man for one tool on demand |
+| `howzo add <name> "desc"` | Register a tool the scanner can't see (internal CLIs, aliases) |
+| `howzo list [--source S]` | Browse the inventory |
+| `howzo mcp` | Run as a stdio MCP server |
+| `howzo db` | Show the database path |
+
+## What it indexes
+
+| Source | What's indexed |
+|---|---|
+| brew | formulae + versions + descriptions (`brew info`) |
+| npm | global packages + their installed binaries |
+| pipx | packages + the binaries they provide (e.g. `crwl` → crawl4ai) |
+| uv | `uv tool` installs |
+| scripts | executables in `~/bin` and `~/.local/bin` (one-liner from the script header) |
+| system (Unix) | `/usr/bin` + `/usr/sbin` + `/usr/local/bin` binaries, described via man pages |
+| path (Windows) | executables found on `PATH` (System32, Program Files, …) |
+| npx | `npx`/`bunx`/`pnpm dlx` packages mined from your shell history (zsh, bash, PowerShell) |
+| custom | anything you add with `howzo add` |
+
+A typical machine indexes ~1,200 tools.
+
+## How it works
+
+- **SQLite + FTS5** at `~/.local/share/howzo/howzo.db` (Windows: `%LOCALAPPDATA%\howzo`), one row per tool: name, source, version, oneliner, when-to-use, help excerpt.
+- **Match = BM25 + word-boundary token-coverage re-rank** in Python. No models, no embeddings — `kill` never matches `skill`, `port` never matches `report`.
+- **~20–30 MB RAM**, and answering is fully offline. The network is only touched while scanning, to fetch package descriptions from npm/PyPI.
+- Set `HOWZO_DB=/some/dir` to relocate the database (also how the test suite isolates itself).
+
+## MCP
+
+howzo runs as a stdio MCP server exposing `howzo_ask`, `howzo_whatis`, and `howzo_list`:
+
+```json
+{
+  "mcpServers": {
+    "howzo": { "command": "howzo", "args": ["mcp"] }
+  }
+}
+```
+
+## Development
+
+```sh
+git clone https://github.com/sohail/howzo.git && cd howzo
+uv venv .venv
+VIRTUAL_ENV=$PWD/.venv uv pip install -e ".[dev]"   # or: pip install -e ".[dev]"
+pytest
+```
+
+Layout:
+
+```
+src/howzo/
+├── cli.py        # entry point + dispatch
+├── commands.py   # scan / ask / whatis / deep / add / list
+├── config.py     # platform constants, DB path (HOWZO_DB override)
+├── proc.py       # subprocess helpers (cross-platform)
+├── db.py         # SQLite + FTS5 schema, upsert
+├── match.py      # tokenization, FTS query, BM25 + coverage re-rank
+├── render.py     # output formatting
+├── helptext.py   # man pages, --help capture
+├── mcp.py        # MCP stdio server
+└── scan/         # one module per source: brew, npm, pipx, uv, scripts, system, path, npx
+tests/            # pytest suite (runs against temp DBs, no network)
+```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
