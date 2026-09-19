@@ -27,7 +27,7 @@ py -m pipx install howzo  # or: uv tool install howzo
 ### From source
 
 ```sh
-git clone https://github.com/sohail/howzo.git
+git clone https://github.com/sohailchd/howzo.git
 pipx install --editable howzo    # or: uv tool install --editable howzo
 ```
 
@@ -107,7 +107,7 @@ howzo runs as a stdio MCP server exposing `howzo_ask`, `howzo_whatis`, and `howz
 ## Development
 
 ```sh
-git clone https://github.com/sohail/howzo.git && cd howzo
+git clone https://github.com/sohailchd/howzo.git && cd howzo
 uv venv .venv
 VIRTUAL_ENV=$PWD/.venv uv pip install -e ".[dev]"   # or: pip install -e ".[dev]"
 pytest

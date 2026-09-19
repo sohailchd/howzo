@@ -24,8 +24,8 @@ classifiers = [
 
 [project.urls]
 # Update after the GitHub repo is created
-Homepage = "https://github.com/sohail/howzo"
-Repository = "https://github.com/sohail/howzo"
+Homepage = "https://github.com/sohailchd/howzo"
+Repository = "https://github.com/sohailchd/howzo"
 
 [project.scripts]
 howzo = "howzo.cli:main"
