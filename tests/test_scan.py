@@ -131,6 +131,21 @@ def test_system_scanner(c, monkeypatch, tmp_path):
     assert c.execute("SELECT COUNT(*) FROM tools WHERE name='lsx'").fetchone()[0] == 0
 
 
+def test_system_scanner_records_found_dir(c, monkeypatch, tmp_path):
+    # sbin-only tool (like macOS /sbin/ifconfig) must be indexed with its real path
+    sbindir = tmp_path / "sbin"
+    sbindir.mkdir()
+    (sbindir / "ifconfig").write_text("x")
+    monkeypatch.setattr(system, "SYSTEM_DIRS", (str(tmp_path / "missing"), str(sbindir)))
+    monkeypatch.setattr(system, "man_oneliner",
+                        lambda name: ("configure network interface drivers", "NAME\n  ifconfig - configure")
+                        if name == "ifconfig" else ("", ""))
+    system.scan_system(c)
+    c.commit()
+    path = c.execute("SELECT path FROM tools WHERE name='ifconfig'").fetchone()[0]
+    assert path == str(sbindir / "ifconfig")
+
+
 def test_path_scanner_indexes_executables(c, monkeypatch, tmp_path):
     bindir = tmp_path / "bindir"
     bindir.mkdir()

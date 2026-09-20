@@ -15,6 +15,28 @@ SYNOPSIS
     assert "SYNOPSIS" in excerpt
 
 
+def test_parse_man_strips_underline_escapes():
+    # macOS man(1) emits underlined text as char+backspace+char (NAME -> N\x08N A\x08A ...)
+    out = "NAME\n   N\x08NA\x08AM\x08ME\x08E - look up the NAME section\n"
+    oneliner, excerpt = helptext._parse_man(out)
+    assert oneliner == "look up the NAME section"
+    assert "NAME - look up" in excerpt
+    assert "\x08" not in excerpt
+
+
+def test_parse_man_en_dash_delimiter():
+    # macOS man uses an en dash in NAME sections: "name – description"
+    out = "NAME\n   ifconfig – configure network interface drivers\n"
+    oneliner, excerpt = helptext._parse_man(out)
+    assert oneliner == "configure network interface drivers"
+
+
+def test_parse_man_stray_backspace():
+    oneliner, excerpt = helptext._parse_man("NAME\n   to\x08ol - does things\n")
+    assert oneliner == "does things"
+    assert "\x08" not in excerpt
+
+
 def test_parse_man_no_name_section():
     oneliner, excerpt = helptext._parse_man("just some\nrandom text")
     assert oneliner == ""

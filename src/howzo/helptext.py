@@ -1,22 +1,35 @@
 """Human-readable text extraction: man pages and --help output."""
 import os
+import re
 import shutil
 import subprocess
 
 MAN_AVAILABLE = shutil.which("man") is not None
+
+# man(1) emits underlined text as char+backspace+char (e.g. 'N\x08N A\x08A').
+# Drop the pre-backspace char, then any stray backspaces.
+_UNDERLINE = re.compile(r".\x08")
+
+
+def _clean_man(out):
+    return _UNDERLINE.sub("", out).replace("\x08", "")
 
 
 def _parse_man(out):
     """Pull (oneliner, excerpt) out of raw man-page text."""
     if not out.strip():
         return "", ""
-    lines = out.splitlines()
+    lines = _clean_man(out).splitlines()
     oneliner, excerpt = "", "\n".join(lines[:60])[:3500]
-    try:  # NAME section first line: "name - description"
+    try:  # NAME section first line: "name - description" (man may use – or -)
         i = next(j for j, l in enumerate(lines) if l.strip() == "NAME")
         for l in lines[i+1:i+6]:
-            if l.strip() and "-" in l:
-                oneliner = l.split("-", 1)[1].strip()
+            s = l.strip()
+            if not s:
+                continue
+            cuts = [j for j in (s.find("-"), s.find("–")) if j > 0]
+            if cuts:
+                oneliner = s[min(cuts)+1:].strip()
                 break
     except StopIteration:
         pass
