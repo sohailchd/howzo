@@ -122,6 +122,27 @@ def test_scan_preserves_custom_rows_and_help(c, monkeypatch, capsys):
     assert kept == "flag --fast\nusage: othertool"
 
 
+def test_scan_system_excerpt_refreshed_not_stale(c, monkeypatch, capsys):
+    # keep-restore must not clobber a fresh man-derived system excerpt
+    # with the stale pre-rescan value (old artifacts surviving rescans)
+    upsert(c, "ifconfig", "system", "", "/sbin/ifconfig", "old oneliner")
+    c.execute("UPDATE tools SET help_excerpt='N\x08NA\x08AM\x08ME\x08E stale dirty excerpt', "
+              "when_to_use='for netconfig' WHERE name='ifconfig'")
+    c.commit()
+
+    def fake_system(conn):
+        upsert(conn, "ifconfig", "system", "", "/sbin/ifconfig", "configure network interface parameters")
+        conn.execute("UPDATE tools SET help_excerpt='NAME\n  ifconfig - configure network' WHERE name='ifconfig'")
+
+    monkeypatch.setattr(commands, "scanners", lambda: [fake_system])
+    assert commands.cmd_scan([]) == 0
+    capsys.readouterr()
+    row = c.execute("SELECT * FROM tools WHERE name='ifconfig'").fetchone()
+    assert row["help_excerpt"].startswith("NAME")
+    assert "\x08" not in row["help_excerpt"]
+    assert row["when_to_use"] == "for netconfig"
+
+
 class TestMainDispatch:
     def test_no_args_prints_usage(self, capsys):
         from howzo.cli import main

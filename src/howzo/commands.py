@@ -39,7 +39,12 @@ def cmd_scan(args):
                   "help_captured_at, scanned_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(name) DO NOTHING",
                   (name, src, ver, path, one, w, h, h_at, time.strftime("%Y-%m-%d")))
     for name, (h, h_at, w) in keep.items():
-        c.execute("UPDATE tools SET help_excerpt=?, help_captured_at=?, when_to_use=? WHERE name=?",
+        # when_to_use is user enrichment: always restore.
+        # help_excerpt: restore only for non-system tools. System tools get a
+        # fresh man-derived excerpt every scan, so restoring the stale value
+        # would clobber it (this is why old man artifacts survived rescans).
+        c.execute("UPDATE tools SET when_to_use=? WHERE name=?", (w, name))
+        c.execute("UPDATE tools SET help_excerpt=?, help_captured_at=?, when_to_use=? WHERE name=? AND source!='system'",
                   (h, h_at, w, name))
     c.commit()
     total = c.execute("SELECT COUNT(*) FROM tools").fetchone()[0]
