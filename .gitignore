@@ -1,3 +1,4 @@
+# python
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -8,3 +9,17 @@ dist/
 venv/
 .pytest_cache/
 .DS_Store
+
+# environment & secrets (never commit)
+.env
+.env.*
+*.env
+.envrc
+*.pem
+*.key
+*.p12
+id_rsa*
+id_ed25519*
+.pypirc
+*-key.json
+*credentials*.json
