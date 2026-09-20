@@ -11,9 +11,25 @@ from ..helptext import man_oneliner
 SYSTEM_DIRS = ("/usr/bin", "/usr/sbin", "/usr/local/bin", "/bin", "/sbin")
 
 
+def candidate_dirs():
+    """Every PATH dir (user's effective order first, so the recorded path is
+    the binary the shell would actually run), plus the standard system dirs
+    as a fallback for minimal/cron-like PATHs. Only tools with a man page
+    end up indexed, so this stays cheap."""
+    dirs = []
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        d = d.strip()
+        if d and d not in dirs:
+            dirs.append(d)
+    for d in SYSTEM_DIRS:
+        if d not in dirs:
+            dirs.append(d)
+    return dirs
+
+
 def scan_system(c):
     names, seen, paths = [], set(), {}
-    for d in SYSTEM_DIRS:
+    for d in candidate_dirs():
         if not os.path.isdir(d):
             continue
         for n in os.listdir(d):

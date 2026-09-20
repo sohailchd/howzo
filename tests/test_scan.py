@@ -131,12 +131,44 @@ def test_system_scanner(c, monkeypatch, tmp_path):
     assert c.execute("SELECT COUNT(*) FROM tools WHERE name='lsx'").fetchone()[0] == 0
 
 
+def test_system_scanner_walks_path_dirs(c, monkeypatch, tmp_path):
+    # tools in custom PATH dirs (e.g. ~/.cargo/bin/cargo) get indexed;
+    # standard dirs stay covered even when PATH is minimal; on name clash
+    # the PATH-dir binary wins (it's the one the shell would run)
+    custom = tmp_path / "cargo-bin"
+    custom.mkdir()
+    (custom / "cargo").write_text("x")
+    (custom / "grep").write_text("x")
+    std = tmp_path / "usr-bin"
+    std.mkdir()
+    (std / "grep").write_text("x")
+    monkeypatch.setattr(system, "SYSTEM_DIRS", (str(std),))
+    monkeypatch.setenv("PATH", str(custom))
+    monkeypatch.setattr(system, "man_oneliner",
+                        lambda name: (f"{name} - fake man", f"NAME\n  {name} - fake"))
+    system.scan_system(c)
+    c.commit()
+    assert c.execute("SELECT COUNT(*) FROM tools").fetchone()[0] == 2
+    assert c.execute("SELECT path FROM tools WHERE name='cargo'").fetchone()[0] == str(custom / "cargo")
+    assert c.execute("SELECT path FROM tools WHERE name='grep'").fetchone()[0] == str(custom / "grep")
+
+
+def test_candidate_dirs_path_first_then_system(monkeypatch, tmp_path):
+    custom = tmp_path / "custom"
+    monkeypatch.setattr(system, "SYSTEM_DIRS", ("/nonexistent-a", "/nonexistent-b"))
+    monkeypatch.setenv("PATH", str(custom) + ":")
+    dirs = system.candidate_dirs()
+    assert dirs[0] == str(custom)
+    assert "/nonexistent-a" in dirs and "/nonexistent-b" in dirs
+
+
 def test_system_scanner_records_found_dir(c, monkeypatch, tmp_path):
     # sbin-only tool (like macOS /sbin/ifconfig) must be indexed with its real path
     sbindir = tmp_path / "sbin"
     sbindir.mkdir()
     (sbindir / "ifconfig").write_text("x")
     monkeypatch.setattr(system, "SYSTEM_DIRS", (str(tmp_path / "missing"), str(sbindir)))
+    monkeypatch.setenv("PATH", "")  # isolate from the real environment
     monkeypatch.setattr(system, "man_oneliner",
                         lambda name: ("configure network interface drivers", "NAME\n  ifconfig - configure")
                         if name == "ifconfig" else ("", ""))
