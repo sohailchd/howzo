@@ -46,6 +46,9 @@ def cmd_scan(args):
         c.execute("UPDATE tools SET when_to_use=? WHERE name=?", (w, name))
         c.execute("UPDATE tools SET help_excerpt=?, help_captured_at=?, when_to_use=? WHERE name=? AND source!='system'",
                   (h, h_at, w, name))
+    # curated 'when to use' hints for core tools (never clobbers user values)
+    from .hints import apply_hints
+    apply_hints(c)
     c.commit()
     total = c.execute("SELECT COUNT(*) FROM tools").fetchone()[0]
     print(f"  inventory: {total} tools in {time.time()-t0:.0f}s")

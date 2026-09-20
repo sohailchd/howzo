@@ -176,3 +176,21 @@ class TestMainDispatch:
         from howzo.cli import main
         assert main(["--help"]) == 0
         assert "Commands:" in capsys.readouterr().out
+
+
+def test_scan_applies_hints_only_to_empty(c, monkeypatch, capsys):
+    from howzo import hints
+    upsert(c, "ifconfig", "system", "", "/sbin/ifconfig", "configure network interface parameters")
+    upsert(c, "mytool", "custom", "", "", "a custom tool")
+    c.execute("UPDATE tools SET when_to_use='user says so' WHERE name='mytool'")
+    c.commit()
+
+    def fake(conn):
+        upsert(conn, "ifconfig", "system", "", "/sbin/ifconfig", "configure network interface parameters")
+
+    monkeypatch.setattr(commands, "scanners", lambda: [fake])
+    assert commands.cmd_scan([]) == 0
+    capsys.readouterr()
+    got = c.execute("SELECT when_to_use FROM tools WHERE name='ifconfig'").fetchone()[0]
+    assert got == hints.HINTS["ifconfig"]
+    assert c.execute("SELECT when_to_use FROM tools WHERE name='mytool'").fetchone()[0] == "user says so"
