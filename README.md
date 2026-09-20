@@ -18,6 +18,12 @@ Requires Python 3.9+. Runtime dependencies: **none** (stdlib only).
 pipx install howzo        # or: uv tool install howzo
 ```
 
+macOS also has a Homebrew formula (tap required):
+
+```sh
+brew tap sohailchd/howzo && brew install howzo
+```
+
 ### Windows
 
 ```powershell
