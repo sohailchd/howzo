@@ -38,4 +38,8 @@ def scan_scripts(c):
             seen.add(path)
             upsert(c, entry, src, "", path, oneliner)
             n += 1
-    print(f"  scripts/local: {n} from {', '.join(os.path.basename(x) for x in config.SCAN_DIRS)}")
+    def short(p):
+        p = os.path.expanduser(p)
+        return "~" + p[len(config.HOME):] if p.startswith(config.HOME) else p
+
+    print(f"  scripts/local: {n} from {', '.join(short(x) for x in config.SCAN_DIRS)}")

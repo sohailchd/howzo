@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "howzo"
-version = "0.1.1"
+version = "0.1.2"
 description = "Knows your machine: ask 'how do I X' in English, get the installed tool + a runnable command."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -23,8 +23,7 @@ classifiers = [
 ]
 
 [project.urls]
-# Update after the GitHub repo is created
-Homepage = "https://github.com/sohailchd/howzo"
+Homepage = "https://sohailchd.github.io/howzo/"
 Repository = "https://github.com/sohailchd/howzo"
 
 [project.scripts]
