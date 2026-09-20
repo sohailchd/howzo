@@ -144,3 +144,14 @@ class TestMainDispatch:
         from howzo.cli import main
         _seed(c)
         assert main(["ask", "rotate pdf"]) == 0
+
+    def test_version_flag(self, capsys):
+        from howzo import __version__
+        from howzo.cli import main
+        assert main(["--version"]) == 0
+        assert capsys.readouterr().out.strip() == f"howzo {__version__}"
+
+    def test_help_flag(self, capsys):
+        from howzo.cli import main
+        assert main(["--help"]) == 0
+        assert "Commands:" in capsys.readouterr().out

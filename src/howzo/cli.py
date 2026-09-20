@@ -17,6 +17,8 @@ Commands:
   howzo list [--source S]
   howzo mcp              run as a stdio MCP server (exposes howzo_ask / howzo_whatis / howzo_list)
   howzo db               show database path
+  howzo --version        show howzo version
+  howzo --help           show this help
 
 Stdlib only, zero models, fully local. Works on macOS, Linux, and Windows."""
 
@@ -26,6 +28,13 @@ def main(argv=None):
     if not args:
         print(USAGE)
         return 1
+    if args[0] in ("--version", "-V"):
+        from . import __version__
+        print(f"howzo {__version__}")
+        return 0
+    if args[0] in ("--help", "-h"):
+        print(USAGE)
+        return 0
     cmd, rest = args[0], args[1:]
     if cmd == "scan":
         return commands.cmd_scan(rest)
