@@ -162,6 +162,26 @@ def test_candidate_dirs_path_first_then_system(monkeypatch, tmp_path):
     assert "/nonexistent-a" in dirs and "/nonexistent-b" in dirs
 
 
+def test_system_scanner_keeps_claimed_names(c, monkeypatch, tmp_path):
+    # names already indexed by richer scanners (brew/npm/pipx/uv/script)
+    # keep their source+version; unclaimed binaries in the same dirs
+    # (cask/app tools) still get indexed
+    upsert(c, "qpdf", "brew", "12.1.0", "", "manipulate PDF files")
+    homebrew = tmp_path / "homebrew-bin"
+    homebrew.mkdir()
+    (homebrew / "qpdf").write_text("x")
+    (homebrew / "ghostty").write_text("x")
+    monkeypatch.setattr(system, "SYSTEM_DIRS", ())
+    monkeypatch.setenv("PATH", str(homebrew))
+    monkeypatch.setattr(system, "man_oneliner",
+                        lambda name: (f"{name} - fake man", f"NAME\n  {name} - fake"))
+    system.scan_system(c)
+    c.commit()
+    row = c.execute("SELECT * FROM tools WHERE name='qpdf'").fetchone()
+    assert row["source"] == "brew" and row["version"] == "12.1.0"
+    assert c.execute("SELECT COUNT(*) FROM tools WHERE name='ghostty'").fetchone()[0] == 1
+
+
 def test_system_scanner_records_found_dir(c, monkeypatch, tmp_path):
     # sbin-only tool (like macOS /sbin/ifconfig) must be indexed with its real path
     sbindir = tmp_path / "sbin"
