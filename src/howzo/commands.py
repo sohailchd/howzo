@@ -85,9 +85,12 @@ def cmd_ask(args):
     rows = []
     if ftsq:
         try:
+            # generous candidate window: BM25 alone favors short docs with
+            # dense term matches; the coverage+field re-rank below needs to
+            # be able to see tools whose matches are sparse but complete
             rows = c.execute(
                 "SELECT t.*, bm25(tools_fts) AS score FROM tools_fts f JOIN tools t ON t.id=f.rowid "
-                "WHERE tools_fts MATCH ? ORDER BY score LIMIT 12", (ftsq,)).fetchall()
+                "WHERE tools_fts MATCH ? ORDER BY score LIMIT 40", (ftsq,)).fetchall()
         except sqlite3.OperationalError:
             rows = []
     if not rows and toks:
