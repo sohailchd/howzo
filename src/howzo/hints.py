@@ -7,7 +7,7 @@ yourself always wins.
 """
 
 HINTS = {
-    "ifconfig": "show or change your ip address, network interface (en0/wlan0 on macOS), mac address, dhcp",
+    "ifconfig": "find or change your ip address, network interface (en0/wlan0 on macOS), mac address, dhcp",
     "ip": "show ip addresses and interfaces (Linux: ip addr)",
     "ipconfig": "show your ip address (Windows: ipconfig /all)",
     "route": "default gateway, routing table",

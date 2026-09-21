@@ -48,12 +48,18 @@ def find_by_name(c, q):
 
 
 def rank_rows(rows, toks):
-    """Re-rank candidates: BM25 + token-coverage bonus (docs matching more
-    distinct query terms win). Rows without a bm25 score still rank by coverage."""
+    """Re-rank candidates: token-coverage bonus + field boost + BM25.
+
+    Tokens found in high-signal fields (name, when_to_use — curated, not
+    scraped) count extra, so a curated 'when to use' description wins over
+    a shorter doc that merely mentions the same words more densely.
+    Rows without a bm25 score still rank by coverage."""
     def rank_key(r):
         try:
             s = r["score"]
         except (IndexError, KeyError):
             s = 0.0
-        return (-(2 * coverage(r, toks) + 0.01 * max(0, -s)), r["name"])
+        title = " ".join(filter(None, [r["name"], r["when_to_use"]])).lower()
+        title_cov = sum(1 for t in toks if re.search(r"(?<![a-z0-9])" + re.escape(t), title))
+        return (-(2 * coverage(r, toks) + 1.5 * title_cov + 0.01 * max(0, -s)), r["name"])
     return sorted(rows, key=rank_key)

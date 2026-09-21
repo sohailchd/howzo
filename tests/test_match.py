@@ -72,3 +72,13 @@ class TestFindByName:
         assert match.find_by_name(c, "j")["name"] == "jq"
         assert match.find_by_name(c, "qqq") is None
         assert match.find_by_name(c, "  ") is None
+
+    def test_curated_when_to_use_beats_denser_scrape(self):
+        # same coverage; the row with query tokens in its curated
+        # when_to_use ranks above one that only matches in scraped text
+        curated = {"name": "ifconfig", "oneliner": "configure network interface parameters",
+                   "when_to_use": "find or change your ip address", "help_excerpt": "", "score": -10.0}
+        scraped = {"name": "logresolve", "oneliner": "resolve ip-addresses to hostnames",
+                   "when_to_use": "", "help_excerpt": "host-to-find, ip addresses", "score": -15.0}
+        rows = match.rank_rows([scraped, curated], ["find", "ip", "address"])
+        assert rows[0]["name"] == "ifconfig"
