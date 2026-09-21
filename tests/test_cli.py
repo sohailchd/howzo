@@ -247,3 +247,60 @@ def test_scan_invalidates_vocab(c, monkeypatch, capsys):
     assert cmd_scan([]) == 0
     assert c.execute("SELECT COUNT(*) FROM vocab").fetchone()[0] == 0
     capsys.readouterr()
+
+
+def test_scan_lock_raises_never_wipes(c, monkeypatch, capsys):
+    # regression (0.2.1): a concurrent writer (another howzo scan holds a
+    # RESERVED lock for minutes) must surface as a lock error, never as the
+    # old "db corrupted, rebuilding" wipe that deleted the whole index
+    # including 'howzo add' rows.
+    import os
+    import sqlite3
+    from howzo import config
+    from howzo import db as dbmod
+    upsert(c, "mytool", "custom", "", "", "a custom tool")
+    upsert(c, "othertool", "brew", "1", "", "brewed tool")
+    c.commit()
+    p = config.db_path()
+    holder = sqlite3.connect(str(p), check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")  # RESERVED: what a live scan holds
+    monkeypatch.setattr(dbmod, "BUSY_TIMEOUT", 0.3)  # fail fast, still wait
+    monkeypatch.setattr(commands, "scanners", lambda: [])
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="locked|busy"):
+            commands.cmd_scan([])
+        assert "corrupted" not in capsys.readouterr().out
+        assert os.path.exists(p)
+    finally:
+        holder.close()
+    fresh = db()
+    names = {r[0] for r in fresh.execute("SELECT name FROM tools")}
+    assert names == {"mytool", "othertool"}
+    fresh.close()
+
+
+def test_scan_waits_out_short_lock(c, monkeypatch, capsys):
+    import os
+    import sqlite3
+    import threading
+    import time
+    from howzo import config
+    upsert(c, "othertool", "brew", "1", "", "brewed tool")
+    c.commit()
+    p = config.db_path()
+    holder = sqlite3.connect(str(p), check_same_thread=False)
+    holder.execute("BEGIN IMMEDIATE")
+
+    def release():
+        time.sleep(1.0)
+        holder.close()
+
+    threading.Thread(target=release).start()
+
+    def fake_brew(conn):
+        upsert(conn, "othertool", "brew", "1", "", "brewed tool")
+
+    monkeypatch.setattr(commands, "scanners", lambda: [fake_brew])
+    assert commands.cmd_scan([]) == 0
+    assert "inventory: 1 tools" in capsys.readouterr().out
+    assert os.path.exists(p)

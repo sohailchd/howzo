@@ -5,6 +5,10 @@ import time
 
 from . import config
 
+# How long to wait out a concurrent howzo process (scan in one terminal,
+# ask in another) before giving up with 'database is locked'.
+BUSY_TIMEOUT = 5.0
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tools (
   id INTEGER PRIMARY KEY,
@@ -53,7 +57,7 @@ def db(path=None):
         # terminal, ask in another) instead of erroring immediately.
         # connect(timeout=...) is used rather than PRAGMA busy_timeout
         # because executescript does not honor the pragma.
-        c = sqlite3.connect(p, timeout=5.0)
+        c = sqlite3.connect(p, timeout=BUSY_TIMEOUT)
         c.row_factory = sqlite3.Row
         c.executescript(SCHEMA)
         # vocab is a derived cache: if it predates the df column, drop it to
@@ -75,7 +79,7 @@ def db(path=None):
         for f in os.listdir(d):
             if f.startswith("howzo.db"):
                 os.remove(os.path.join(d, f))
-        c = sqlite3.connect(p, timeout=5.0)
+        c = sqlite3.connect(p, timeout=BUSY_TIMEOUT)
         c.row_factory = sqlite3.Row
         c.executescript(SCHEMA)
         return c

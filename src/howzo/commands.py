@@ -23,7 +23,14 @@ def cmd_scan(args):
                                    r["when_to_use"], r["help_excerpt"], r["help_captured_at"])
                        for r in c.execute("SELECT * FROM tools WHERE source IN ('custom','npx')")}
         c.execute("DELETE FROM tools")
-    except sqlite3.DatabaseError:
+    except sqlite3.DatabaseError as e:
+        # Same discipline as db(): 'database is locked' is an
+        # OperationalError — a concurrent howzo process writing is normal.
+        # Deleting the index on it loses every scanned tool and every
+        # 'howzo add' row. Only a genuinely unreadable file gets rebuilt.
+        msg = str(e).lower()
+        if "not a database" not in msg and "malformed" not in msg:
+            raise
         print("  warning: db corrupted, rebuilding")
         d = config.db_dir()
         for f in os.listdir(d):
