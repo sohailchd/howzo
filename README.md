@@ -30,6 +30,10 @@ brew tap sohailchd/howzo && brew install howzo
 py -m pipx install howzo  # or: uv tool install howzo
 ```
 
+> On Windows tools are indexed by name from `PATH` (plus package metadata
+> and `--help` capture) — there is no `man`, so descriptions are thinner
+> than on macOS/Linux.
+
 ### From source
 
 ```sh

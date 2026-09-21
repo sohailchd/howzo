@@ -73,6 +73,16 @@ class TestFindByName:
         assert match.find_by_name(c, "qqq") is None
         assert match.find_by_name(c, "  ") is None
 
+    def test_windows_exe_suffix(self, c, monkeypatch):
+        # Windows indexes store .exe-suffixed names; a bare name must find them
+        from howzo.db import upsert
+        upsert(c, "python.exe", "script", "", "C:/Python/python.exe", "python interpreter")
+        c.commit()
+        monkeypatch.setattr(match.os, "name", "nt")
+        assert match.find_by_name(c, "python")["name"] == "python.exe"
+        assert match.find_by_name(c, "python.exe")["name"] == "python.exe"
+        assert match.find_by_name(c, "pythonx") is None
+
     def test_curated_when_to_use_beats_denser_scrape(self):
         # same coverage; the row with query tokens in its curated
         # when_to_use ranks above one that only matches in scraped text

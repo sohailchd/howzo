@@ -3,6 +3,7 @@
 Match = FTS5 BM25 + a word-boundary token-coverage re-rank in Python,
 so 'kill' never matches 'skill' and 'port' never matches 'report'.
 """
+import os
 import re
 
 STOP = {"a", "an", "and", "are", "as", "at", "can", "do", "does", "for", "from",
@@ -147,14 +148,23 @@ def expand_tokens(c, toks, cap=1):
 
 
 def find_by_name(c, q):
-    """Exact (case-insensitive) or prefix name lookup."""
+    """Exact (case-insensitive) or prefix name lookup.
+
+    On Windows the index stores .exe-suffixed names, so a bare name
+    ('python') must also match 'python.exe'."""
     q = q.strip().lower()
     if not q:
         return None
-    row = c.execute("SELECT * FROM tools WHERE lower(name)=?", (q,)).fetchone()
+    names = [q] + ([q + ".exe"] if os.name == "nt" else [])
+    row = c.execute("SELECT * FROM tools WHERE lower(name) IN (%s)"
+                    % ",".join("?" * len(names)), names).fetchone()
     if row:
         return row
-    return c.execute("SELECT * FROM tools WHERE lower(name) LIKE ?", (q + "%",)).fetchone()
+    for n in names:
+        row = c.execute("SELECT * FROM tools WHERE lower(name) LIKE ?", (n + "%",)).fetchone()
+        if row:
+            return row
+    return None
 
 
 def rank_rows(rows, toks):
