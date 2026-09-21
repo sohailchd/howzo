@@ -194,3 +194,25 @@ def test_scan_applies_hints_only_to_empty(c, monkeypatch, capsys):
     got = c.execute("SELECT when_to_use FROM tools WHERE name='ifconfig'").fetchone()[0]
     assert got == hints.HINTS["ifconfig"]
     assert c.execute("SELECT when_to_use FROM tools WHERE name='mytool'").fetchone()[0] == "user says so"
+
+
+def test_scan_hints_ipconfig_only_on_windows(c, monkeypatch, capsys):
+    from howzo import config, hints
+    upsert(c, "ipconfig", "system", "", "/sbin/ipconfig", "view and control IP configuration state")
+    c.commit()
+
+    def fake(conn):
+        upsert(conn, "ipconfig", "system", "", "/sbin/ipconfig", "view and control IP configuration state")
+
+    monkeypatch.setattr(commands, "scanners", lambda: [fake])
+    monkeypatch.setattr(config, "IS_WINDOWS", False)
+    assert commands.cmd_scan([]) == 0
+    capsys.readouterr()
+    assert c.execute("SELECT when_to_use FROM tools WHERE name='ipconfig'").fetchone()[0] == ""
+
+    c.execute("UPDATE tools SET when_to_use='' WHERE name='ipconfig'")
+    c.commit()
+    monkeypatch.setattr(config, "IS_WINDOWS", True)
+    assert commands.cmd_scan([]) == 0
+    capsys.readouterr()
+    assert c.execute("SELECT when_to_use FROM tools WHERE name='ipconfig'").fetchone()[0] == hints.HINTS["ipconfig"]

@@ -5,6 +5,7 @@ Plain data — extend it as you find tools that never surface for the words
 users type. Hints only fill an empty when_to_use, so anything you set
 yourself always wins.
 """
+from . import config
 
 HINTS = {
     "ifconfig": "find or change your ip address, network interface (en0/wlan0 on macOS), mac address, dhcp",
@@ -17,9 +18,16 @@ HINTS = {
 
 
 def apply_hints(c):
-    """Fill empty when_to_use fields from HINTS; never clobbers existing values."""
+    """Fill empty when_to_use fields from HINTS; never clobbers existing values.
+
+    'ipconfig' is only hinted on Windows: there it IS the 'show my ip
+    address' tool. On macOS/Linux the same name is a low-level
+    IPConfiguration agent tool, and hinting it would pull the wrong tool
+    up for 'ip address' queries (ifconfig is the right one there)."""
     n = 0
     for name, hint in HINTS.items():
+        if name == "ipconfig" and not config.IS_WINDOWS:
+            continue
         cur = c.execute("UPDATE tools SET when_to_use=? WHERE name=? AND when_to_use=''",
                         (hint, name))
         n += cur.rowcount
