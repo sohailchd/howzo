@@ -1,9 +1,28 @@
 import json
 import os
+import time
 
 from howzo.db import upsert
 from howzo import scan as scan_pkg
 from howzo.scan import brew, npm, pipx, uv, scripts, system, path, npx
+
+
+def _fake_bin_dir(tmp_path, *names):
+    """A dir of executable fake binaries (os.access(..., X_OK) must pass)."""
+    bdir = tmp_path / "bin"
+    bdir.mkdir(exist_ok=True)
+    for n in names:
+        (bdir / n).write_text("x")
+        os.chmod(bdir / n, 0o755)
+    return bdir
+
+
+def _counting_man(calls, oneliner=None, excerpt=None):
+    def man(name):
+        calls.append(name)
+        return (oneliner if oneliner is not None else f"{name} one-liner",
+                excerpt if excerpt is not None else f"NAME\n  {name} - fake")
+    return man
 
 
 def test_scanners_platform_selection(monkeypatch):
@@ -201,6 +220,118 @@ def test_system_scanner_records_found_dir(c, monkeypatch, tmp_path):
     c.commit()
     path = c.execute("SELECT path FROM tools WHERE name='ifconfig'").fetchone()[0]
     assert path == str(sbindir / "ifconfig")
+
+
+def test_system_scanner_man_cache_skips_unchanged_binaries(c, monkeypatch, tmp_path):
+    # man is a subprocess per binary (~1,500 of them): the second scan must
+    # come from man_cache instead of re-forking man for everything
+    bdir = _fake_bin_dir(tmp_path, "alpha", "beta")
+    monkeypatch.setattr(system, "SYSTEM_DIRS", (str(bdir),))
+    monkeypatch.setenv("PATH", "")
+    calls = []
+    monkeypatch.setattr(system, "man_oneliner", _counting_man(calls))
+    system.scan_system(c)
+    c.commit()
+    assert sorted(calls) == ["alpha", "beta"]
+    assert c.execute("SELECT COUNT(*) FROM man_cache").fetchone()[0] == 2
+
+    calls.clear()
+    system.scan_system(c)
+    c.commit()
+    assert calls == []  # every man page came from the cache
+    assert c.execute("SELECT COUNT(*) FROM tools WHERE source='system'").fetchone()[0] == 2
+
+
+def test_system_scanner_refetches_when_the_binary_changes(c, monkeypatch, tmp_path):
+    bdir = _fake_bin_dir(tmp_path, "alpha")
+    monkeypatch.setattr(system, "SYSTEM_DIRS", (str(bdir),))
+    monkeypatch.setenv("PATH", "")
+    calls = []
+    monkeypatch.setattr(system, "man_oneliner", _counting_man(calls))
+    system.scan_system(c)
+    c.commit()
+    calls.clear()
+    os.utime(bdir / "alpha", (time.time() + 5, time.time() + 5))
+    system.scan_system(c)
+    c.commit()
+    assert calls == ["alpha"]  # mtime moved: the cache entry is stale
+
+
+def test_system_scanner_caches_missing_man_pages(c, monkeypatch, tmp_path):
+    # a name with no man page must not be re-forked on every rescan
+    bdir = _fake_bin_dir(tmp_path, "ghost")
+    monkeypatch.setattr(system, "SYSTEM_DIRS", (str(bdir),))
+    monkeypatch.setenv("PATH", "")
+    calls = []
+    monkeypatch.setattr(system, "man_oneliner", _counting_man(calls, oneliner="", excerpt=""))
+    system.scan_system(c)
+    c.commit()
+    assert calls == ["ghost"]
+    row = c.execute("SELECT * FROM man_cache WHERE name='ghost'").fetchone()
+    assert row is not None and row["oneliner"] == "" and row["excerpt"] == ""
+
+    calls.clear()
+    system.scan_system(c)
+    c.commit()
+    assert calls == []
+    assert c.execute("SELECT COUNT(*) FROM tools").fetchone()[0] == 0
+
+
+def test_system_scanner_skips_unchanged_upserts(c, monkeypatch, tmp_path):
+    # an identical path+oneliner row is left exactly as it is: no write, so
+    # no FTS update trigger churn on a rescan
+    bdir = _fake_bin_dir(tmp_path, "alpha")
+    monkeypatch.setattr(system, "SYSTEM_DIRS", (str(bdir),))
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setattr(system, "man_oneliner",
+                        lambda name: ("alpha one-liner", "NAME\n  alpha - fake"))
+    upsert(c, "alpha", "system", "", str(bdir / "alpha"), "alpha one-liner")
+    c.execute("UPDATE tools SET scanned_at='1999-01-01', help_excerpt='kept excerpt' "
+              "WHERE name='alpha'")
+    c.commit()
+    system.scan_system(c)
+    c.commit()
+    row = c.execute("SELECT * FROM tools WHERE name='alpha'").fetchone()
+    assert row["scanned_at"] == "1999-01-01"     # untouched: no upsert ran
+    assert row["help_excerpt"] == "kept excerpt"
+    assert row["oneliner"] == "alpha one-liner"
+
+
+def test_system_scanner_rewrites_a_changed_row(c, monkeypatch, tmp_path):
+    # the mirror image: a different oneliner must be written
+    bdir = _fake_bin_dir(tmp_path, "alpha")
+    monkeypatch.setattr(system, "SYSTEM_DIRS", (str(bdir),))
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setattr(system, "man_oneliner",
+                        lambda name: ("brand new one-liner", "NAME\n  alpha - fake"))
+    upsert(c, "alpha", "system", "", str(bdir / "alpha"), "stale one-liner")
+    c.execute("UPDATE tools SET scanned_at='1999-01-01' WHERE name='alpha'")
+    c.commit()
+    system.scan_system(c)
+    c.commit()
+    row = c.execute("SELECT * FROM tools WHERE name='alpha'").fetchone()
+    assert row["oneliner"] == "brand new one-liner"
+    assert row["scanned_at"] != "1999-01-01"
+
+
+def test_man_cache_survives_the_tools_wipe(c, monkeypatch, tmp_path):
+    # cmd_scan empties tools before scanning; the man cache must not be part
+    # of that wipe or a rescan would re-fork every man page
+    seed_man = _fake_bin_dir(tmp_path, "alpha")
+    monkeypatch.setattr(system, "SYSTEM_DIRS", (str(seed_man),))
+    monkeypatch.setenv("PATH", "")
+    calls = []
+    monkeypatch.setattr(system, "man_oneliner", _counting_man(calls))
+    system.scan_system(c)
+    c.commit()
+    c.execute("DELETE FROM tools")
+    c.commit()
+    calls.clear()
+    system.scan_system(c)
+    c.commit()
+    assert calls == []
+    assert c.execute("SELECT oneliner FROM tools WHERE name='alpha'").fetchone()[0] \
+        == "alpha one-liner"
 
 
 def test_path_scanner_indexes_executables(c, monkeypatch, tmp_path):

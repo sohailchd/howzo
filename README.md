@@ -44,10 +44,10 @@ pipx install --editable howzo    # or: uv tool install --editable howzo
 ### First run
 
 ```sh
-howzo scan     # one-time: build your machine's inventory (~2-3 min)
+howzo scan     # one-time: build your machine's inventory (~2 min)
 ```
 
-Rescans are safe: captured help text, `when_to_use` notes, custom entries, and mined npx packages are preserved.
+Rescans are safe: captured help text, `when_to_use` notes, custom entries, and mined npx packages are preserved. Man pages are cached per binary revision (path + mtime), so a rescan only re-fetches what changed — seconds of work instead of re-reading 1,500 man pages.
 
 ## Usage
 
@@ -92,13 +92,15 @@ lsof  (brew, 9.9)
 | path (Windows) | executables found on `PATH` (System32, Program Files, …) |
 | npx | `npx`/`bunx`/`pnpm dlx` packages mined from your shell history (zsh, bash, PowerShell) |
 | custom | anything you add with `howzo add` |
+| seed | ~230 curated top commands for macOS / Linux / Windows (incl. PowerShell cmdlets), bundled with howzo — so the classic tools are answerable on day one, on every platform |
 
-A typical machine indexes ~1,200 tools.
+A typical machine indexes ~1,500 tools. Seed rows are reference entries for tools that aren't installed *here*; they render distinctly — `mv  (seed, windows)` — and are ranked below your machine's own tools.
 
 ## How it works
 
 - **SQLite + FTS5** at `~/.local/share/howzo/howzo.db` (Windows: `%LOCALAPPDATA%\howzo`), one row per tool: name, source, version, oneliner, when-to-use, help excerpt.
-- **Match = BM25 + word-boundary token-coverage re-rank** in Python. No models, no embeddings — `kill` never matches `skill`, `port` never matches `report`.
+- **Match = BM25 + word-boundary token-coverage re-rank** in Python, tiered by field (name > when-to-use > oneliner > man excerpt) with typo tolerance (Damerau-Levenshtein against the index vocabulary). No models, no embeddings — `kill` never matches `skill`, `port` never matches `report`.
+- **Curated seed layer**: man pages under-describe what tools are *for* (`cat`'s page says "concatenate files", so "content of the file" could never reach it). howzo bundles ~230 hand-written "when to use" entries for the top macOS/Linux/Windows commands and merges them in at scan time — filling gaps only, never overwriting your machine's real data.
 - **~20–30 MB RAM**, and answering is fully offline. The network is only touched while scanning, to fetch package descriptions from npm/PyPI.
 - Set `HOWZO_DB=/some/dir` to relocate the database (also how the test suite isolates itself).
 
@@ -133,6 +135,7 @@ src/howzo/
 ├── proc.py       # subprocess helpers (cross-platform)
 ├── db.py         # SQLite + FTS5 schema, upsert
 ├── match.py      # tokenization, FTS query, BM25 + coverage re-rank
+├── seed.py       # curated cross-platform command knowledge base
 ├── render.py     # output formatting
 ├── helptext.py   # man pages, --help capture
 ├── mcp.py        # MCP stdio server

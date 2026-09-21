@@ -57,9 +57,11 @@ def cmd_scan(args):
         c.execute("UPDATE tools SET when_to_use=? WHERE name=?", (w, name))
         c.execute("UPDATE tools SET help_excerpt=?, help_captured_at=?, when_to_use=? WHERE name=? AND source!='system'",
                   (h, h_at, w, name))
-    # curated 'when to use' hints for core tools (never clobbers user values)
-    from .hints import apply_hints
-    apply_hints(c)
+    # bundled seed knowledge base of top macOS/Linux/Windows commands: fills
+    # empty when_to_use for what is installed, and indexes the rest as
+    # cross-platform references (never clobbers a user's own text)
+    from .seed import apply_seed
+    apply_seed(c)
     # the typo-corrector's vocab df cache was built from the pre-rescan
     # corpus: drop it so the next query rebuilds from the fresh tools
     c.execute("DELETE FROM vocab")

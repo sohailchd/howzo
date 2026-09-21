@@ -114,7 +114,10 @@ def test_scan_preserves_custom_rows_and_help(c, monkeypatch, capsys):
     monkeypatch.setattr(commands, "scanners", lambda: [fake_brew])
     rc = commands.cmd_scan([])
     assert rc == 0
-    assert "inventory: 2 tools" in capsys.readouterr().out
+    assert "inventory:" in capsys.readouterr().out
+    # the scanned/custom rows survive; the bundled seed adds reference rows
+    # on top of them, so count the non-seed inventory
+    assert c.execute("SELECT COUNT(*) FROM tools WHERE source!='seed'").fetchone()[0] == 2
     row = c.execute("SELECT * FROM tools WHERE name='mytool'").fetchone()
     assert row["source"] == "custom"
     assert row["oneliner"] == "a custom tool"
@@ -178,8 +181,8 @@ class TestMainDispatch:
         assert "Commands:" in capsys.readouterr().out
 
 
-def test_scan_applies_hints_only_to_empty(c, monkeypatch, capsys):
-    from howzo import hints
+def test_scan_applies_seed_only_to_empty(c, monkeypatch, capsys):
+    from howzo import seed
     upsert(c, "ifconfig", "system", "", "/sbin/ifconfig", "configure network interface parameters")
     upsert(c, "mytool", "custom", "", "", "a custom tool")
     c.execute("UPDATE tools SET when_to_use='user says so' WHERE name='mytool'")
@@ -192,12 +195,12 @@ def test_scan_applies_hints_only_to_empty(c, monkeypatch, capsys):
     assert commands.cmd_scan([]) == 0
     capsys.readouterr()
     got = c.execute("SELECT when_to_use FROM tools WHERE name='ifconfig'").fetchone()[0]
-    assert got == hints.HINTS["ifconfig"]
+    assert got == seed.entry("ifconfig")[3]
     assert c.execute("SELECT when_to_use FROM tools WHERE name='mytool'").fetchone()[0] == "user says so"
 
 
-def test_scan_hints_ipconfig_only_on_windows(c, monkeypatch, capsys):
-    from howzo import config, hints
+def test_scan_seed_ipconfig_only_on_windows(c, monkeypatch, capsys):
+    from howzo import config, seed
     upsert(c, "ipconfig", "system", "", "/sbin/ipconfig", "view and control IP configuration state")
     c.commit()
 
@@ -215,14 +218,14 @@ def test_scan_hints_ipconfig_only_on_windows(c, monkeypatch, capsys):
     monkeypatch.setattr(config, "IS_WINDOWS", True)
     assert commands.cmd_scan([]) == 0
     capsys.readouterr()
-    assert c.execute("SELECT when_to_use FROM tools WHERE name='ipconfig'").fetchone()[0] == hints.HINTS["ipconfig"]
+    assert c.execute("SELECT when_to_use FROM tools WHERE name='ipconfig'").fetchone()[0] == seed.entry("ipconfig")[3]
 
 
 def test_ask_typo_query_finds_grep(c, capsys):
     from howzo.db import upsert
     upsert(c, "grep", "system", "", "", "print lines matching a pattern")
     upsert(c, "findrule", "system", "", "", "command line wrapper to File::Find::Rule")
-    # grep carries the production curated hint (see hints.HINTS)
+    # grep carries the production curated text (see howzo.seed)
     c.execute("UPDATE tools SET when_to_use='search for lines that match a pattern in file contents, command output, or log files' WHERE name='grep'")
     c.execute("UPDATE tools SET help_excerpt='print selected lines from a file, first occurrence of a match' WHERE name='grep'")
     c.commit()
@@ -302,5 +305,6 @@ def test_scan_waits_out_short_lock(c, monkeypatch, capsys):
 
     monkeypatch.setattr(commands, "scanners", lambda: [fake_brew])
     assert commands.cmd_scan([]) == 0
-    assert "inventory: 1 tools" in capsys.readouterr().out
+    assert "inventory:" in capsys.readouterr().out
+    assert c.execute("SELECT COUNT(*) FROM tools WHERE source!='seed'").fetchone()[0] == 1
     assert os.path.exists(p)

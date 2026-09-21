@@ -21,7 +21,13 @@ def best_help_lines(help_text, q, n=3):
 
 def render_tool(row, q=""):
     t = {k: row[k] for k in row.keys()} if isinstance(row, sqlite3.Row) else dict(row)
-    out = [f"{t['name']}  ({t['source']}" + (f", {t['version']}" if t.get("version") else "") + ")"]
+    if t.get("source") == "seed":
+        # bundled reference entry, not something installed here: say where it
+        # belongs so the answer is not mistaken for a local tool
+        tag = "seed, %s" % (t.get("platform") or "all")
+    else:
+        tag = t["source"] + (f", {t['version']}" if t.get("version") else "")
+    out = [f"{t['name']}  ({tag})"]
     if t.get("oneliner"):
         out.append(f"  {t['oneliner']}")
     if t.get("when_to_use"):

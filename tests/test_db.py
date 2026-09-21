@@ -32,6 +32,38 @@ def test_fts_stays_in_sync(c):
     assert hits == 0
 
 
+def test_platform_column_migration_is_additive_and_idempotent(tmp_path, monkeypatch):
+    # a 0.2.2 database has no tools.platform: opening it must add the column
+    # without touching the rows, and opening it again must not fail
+    import sqlite3
+    from howzo.db import SCHEMA, db
+    p = tmp_path / "howzo.db"
+    monkeypatch.setenv("HOWZO_DB", str(p))
+    old_schema = SCHEMA.replace(",\n  platform TEXT", "")
+    assert "platform" not in old_schema
+    con = sqlite3.connect(str(p))
+    con.executescript(old_schema)
+    con.execute("INSERT INTO tools(name, source, path, oneliner) "
+                "VALUES('cat', 'system', '/bin/cat', 'concatenate files')")
+    con.commit()
+    con.close()
+
+    c = db()
+    cols = [r[1] for r in c.execute("PRAGMA table_info(tools)")]
+    assert "platform" in cols
+    assert "man_cache" in {r[0] for r in c.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    row = c.execute("SELECT * FROM tools WHERE name='cat'").fetchone()
+    assert row["oneliner"] == "concatenate files"
+    assert row["platform"] is None
+    c.close()
+
+    c = db()  # idempotent: the column is already there
+    assert "platform" in [r[1] for r in c.execute("PRAGMA table_info(tools)")]
+    assert c.execute("SELECT COUNT(*) FROM tools").fetchone()[0] == 1
+    c.close()
+
+
 def test_corrupted_db_rebuilds(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("HOWZO_DB", str(tmp_path / "howzo.db"))
     p = tmp_path / "howzo.db"

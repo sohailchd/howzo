@@ -7,6 +7,8 @@ import os
 import re
 import sqlite3
 
+from . import config
+
 STOP = {"a", "an", "and", "are", "as", "at", "can", "do", "does", "for", "from",
         "get", "how", "i", "in", "into", "is", "it", "me", "my", "on", "of", "or", "that",
         "the", "to", "up", "what", "whats", "which", "with", "you", "your", "show", "shows",
@@ -230,7 +232,7 @@ NAME_ALIASES = {
 }
 
 
-def rank_rows(rows, toks):
+def rank_rows(rows, toks, platform=None):
     """Re-rank candidates by field tier: intent fields beat description.
 
     Four tiers, each normalized by the number of query tokens:
@@ -246,13 +248,30 @@ def rank_rows(rows, toks):
     Without normalization a long doc that merely mentions more query
     words would always outscore the right tool. Ties break on the FTS5
     bm25 score (more negative = denser match), then name. Rows without
-    a score (LIKE fallback) tie at 0."""
+    a score (LIKE fallback) tie at 0.
+
+    Platform is a PRIMARY sort key, not a score fudge: every native row
+    (no platform, 'all', or this machine's platform) sorts ahead of every
+    foreign row, whatever its tier score. A score multiplier was tried and
+    fails — an exact name hit on a foreign row (ip on macOS) survives any
+    sane penalty and outranks the machine's real tool. Foreign references
+    are still returned (ranked among themselves), so a Mac user asking
+    about a Windows command still gets the answer — just after every
+    answer that applies to their machine.
+    """
     n = len(toks) or 1
+    cur = platform or config.platform_name()
+
     def rank_key(r):
         try:
             s = r["score"]
         except (IndexError, KeyError):
             s = 0.0
+        try:
+            p = (r["platform"] or "").lower()
+        except (IndexError, KeyError):
+            p = ""
+        group = 1 if (p and p != "all" and p != cur) else 0
         name = r["name"].lower()
         if name.endswith(".exe"):
             name = name[:-4]
@@ -264,6 +283,6 @@ def rank_rows(rows, toks):
         w_cov = sum(1 for t in toks if _tok_in(t, re.findall(r"[a-z0-9]+", when)))
         o_cov = sum(1 for t in toks if _tok_in(t, re.findall(r"[a-z0-9]+", oneliner)))
         e_cov = sum(1 for t in toks if _tok_in(t, re.findall(r"[a-z0-9]+", excerpt)))
-        return (-(3.0 * n_cov / n + 2.0 * w_cov / n + 1.0 * o_cov / n + 0.5 * e_cov / n),
-                s, r["name"])
+        tier = 3.0 * n_cov / n + 2.0 * w_cov / n + 1.0 * o_cov / n + 0.5 * e_cov / n
+        return (group, -tier, s, r["name"])
     return sorted(rows, key=rank_key)

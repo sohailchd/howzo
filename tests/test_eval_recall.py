@@ -2,21 +2,21 @@
 
 Guards the matching pipeline end-to-end (tokenize -> typo correction ->
 FTS window -> field-tier ranking -> render): changing weights, matcher
-logic, or hints must not regress these recall expectations. The corpus
-uses real man-page oneliners and production hints are applied via
-apply_hints, exactly like a real scan. Top-1 is asserted only where the
+logic, or the bundled seed must not regress these recall expectations. The
+corpus uses real man-page oneliners and production seed data is applied via
+apply_seed, exactly like a real scan. Top-1 is asserted only where the
 intent is unambiguous; otherwise membership in the top-3.
 """
 import re
 
 import pytest
 
-from howzo import hints
+from howzo import seed
 from howzo.commands import cmd_ask
 from howzo.db import upsert
 
 CORPUS = [
-    # network (ifconfig et al. get production hints)
+    # network (ifconfig et al. get production seed data)
     ("ifconfig", "configure network interface parameters"),
     ("ip", "show ip addresses and interfaces (Linux)"),
     ("arp", "manipulate ARP tables"),
@@ -96,7 +96,7 @@ CASES = [
     ("how to see the first lines of a file", "head", {"head"}),
     ("how to count lines in a file", "wc", {"wc"}),
     # sed's intent words live only in its man page and it trails the curated
-    # hints in a small corpus; grep's top-1 is the stable guard
+    # seed data in a small corpus; grep's top-1 is the stable guard
     ("how to filter lines with a pattern", "grep", {"grep"}),
     ("how to connect to a remote server", "ssh", {"ssh"}),
     ("how to archive a folder", None, {"tar", "zip"}),
@@ -107,12 +107,18 @@ CASES = [
     ("how to move a file", "mv", {"mv"}),
     ("how to remove a file", "rm", {"rm"}),
     ("how to list files", "ls", {"ls"}),
+    # seed coverage: howzo can only rank words present in indexed text, so
+    # these intents only reach the right tool through the bundled seed
+    ("content of the file", "cat", {"cat"}),
+    ("rename a file", "mv", {"mv"}),
+    ("delete a file", "rm", {"rm"}),
+    ("list files in a directory", "ls", {"ls"}),
 ]
 
 
 @pytest.fixture(scope="module")
 def corpus(tmp_path_factory):
-    """A scan-like fixture index: real oneliners + production hints."""
+    """A scan-like fixture index: real oneliners + the production seed."""
     from howzo.db import db
     mp = pytest.MonkeyPatch()  # module scope can't use function-scoped monkeypatch
     mp.setenv("HOWZO_DB", str(tmp_path_factory.mktemp("eval") / "howzo.db"))
@@ -121,7 +127,7 @@ def corpus(tmp_path_factory):
         upsert(c, name, "system", "", "", one)
     for name, excerpt in EXCERPTS.items():
         c.execute("UPDATE tools SET help_excerpt=? WHERE name=?", (excerpt, name))
-    hints.apply_hints(c)
+    seed.apply_seed(c)
     c.commit()
     yield c
     c.close()
@@ -129,9 +135,14 @@ def corpus(tmp_path_factory):
 
 
 def _ask_tools(c, capsys, query):
+    """Names rendered by cmd_ask, in order, seed rows included.
+
+    Seed rows render as 'name  (seed, platform)'; they are part of the result
+    list, so the guard must see them rather than silently dropping them.
+    """
     assert cmd_ask(query.split()) == 0, f"cmd_ask failed for: {query}"
     out = capsys.readouterr().out
-    return re.findall(r"^(\S+)\s+\(\w+\)$", out, re.M)[:3]
+    return [name for name, _tag in re.findall(r"^(\S+)\s+\(([^)]*)\)$", out, re.M)][:3]
 
 
 @pytest.mark.parametrize("query, top1, in_top3", CASES)

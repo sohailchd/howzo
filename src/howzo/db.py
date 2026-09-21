@@ -20,11 +20,20 @@ CREATE TABLE IF NOT EXISTS tools (
   when_to_use TEXT DEFAULT '',
   help_excerpt TEXT DEFAULT '',
   help_captured_at TEXT,
-  scanned_at TEXT
+  scanned_at TEXT,
+  platform TEXT
 );
 CREATE TABLE IF NOT EXISTS vocab (
   word TEXT PRIMARY KEY,
   df INTEGER DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS man_cache (
+  name TEXT PRIMARY KEY,
+  path TEXT,
+  mtime REAL,
+  oneliner TEXT DEFAULT '',
+  excerpt TEXT DEFAULT '',
+  captured_at TEXT
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS tools_fts USING fts5(
   name, oneliner, when_to_use, help_excerpt, content='tools', content_rowid='id',
@@ -65,6 +74,11 @@ def db(path=None):
         cols = [r[1] for r in c.execute("PRAGMA table_info(vocab)")]
         if cols and "df" not in cols:
             c.execute("DROP TABLE vocab")
+        # tools gains columns over time; CREATE TABLE IF NOT EXISTS cannot
+        # alter an existing table, so add what is missing (idempotent)
+        tool_cols = [r[1] for r in c.execute("PRAGMA table_info(tools)")]
+        if "platform" not in tool_cols:
+            c.execute("ALTER TABLE tools ADD COLUMN platform TEXT")
         c.execute("SELECT count(*) FROM tools")  # probe
         return c
     except sqlite3.DatabaseError as e:
@@ -88,10 +102,14 @@ def db(path=None):
 def upsert(c, name, source, version, path, oneliner):
     """Insert a tool row, or update version/path on conflict.
 
-    An empty new oneliner never clobbers an existing description.
+    An empty new oneliner never clobbers an existing description. A
+    scanned row is native: platform is cleared, because a seed-inserted
+    row of the same name (e.g. 'convert (seed, linux)') must lose its
+    foreign tag the moment the tool is actually installed here.
     """
-    c.execute("INSERT INTO tools(name, source, version, path, oneliner, scanned_at) VALUES(?,?,?,?,?,?) "
+    c.execute("INSERT INTO tools(name, source, version, path, oneliner, scanned_at, platform) "
+              "VALUES(?,?,?,?,?,?,NULL) "
               "ON CONFLICT(name) DO UPDATE SET source=excluded.source, version=excluded.version, "
               "path=excluded.path, oneliner=CASE WHEN excluded.oneliner != '' THEN excluded.oneliner ELSE tools.oneliner END, "
-              "scanned_at=excluded.scanned_at",
+              "scanned_at=excluded.scanned_at, platform=NULL",
               (name, source, version, path, oneliner, time.strftime("%Y-%m-%d")))

@@ -5,9 +5,18 @@ variable, a full path to the DB file (the test suite points it at a
 temporary file).
 """
 import os
+import sys
 
 IS_WINDOWS = os.name == "nt"
 HOME = os.path.expanduser("~")
+
+
+def platform_name():
+    """'windows', 'macos', or 'linux' — the platform seeds rank against."""
+    if IS_WINDOWS:
+        return "windows"
+    return "macos" if sys.platform == "darwin" else "linux"
+
 
 # Directories scanned for user scripts (see scan/scripts.py)
 SCAN_DIRS = [os.path.join(HOME, "bin"), os.path.join(HOME, ".local", "bin")]
