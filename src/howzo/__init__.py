@@ -4,4 +4,4 @@ Ask "how do I X" in English and get the tool that is actually installed on
 this machine, plus a usage hint. Stdlib only, zero models, fully local.
 """
 
-__version__ = "0.1.3"
+__version__ = "0.2.0"
