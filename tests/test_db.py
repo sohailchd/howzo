@@ -40,3 +40,30 @@ def test_corrupted_db_rebuilds(tmp_path, monkeypatch, capsys):
     assert "warning: db corrupted" in capsys.readouterr().out
     assert c.execute("SELECT COUNT(*) FROM tools").fetchone()[0] == 0
     c.close()
+
+
+def test_locked_db_is_not_deleted(tmp_path, monkeypatch, capsys):
+    # regression: 'database is locked' is an OperationalError (a DatabaseError
+    # subclass). It must make the caller wait, never delete the user's index.
+    import sqlite3
+    import threading
+    import time
+    p = tmp_path / "howzo.db"
+    monkeypatch.setenv("HOWZO_DB", str(p))
+    first = db()
+    first.execute("INSERT INTO tools(name, source) VALUES('x', 'system')")
+    first.commit()
+    holder = sqlite3.connect(str(p), check_same_thread=False)
+    holder.execute("BEGIN EXCLUSIVE")
+
+    def release():
+        time.sleep(1.0)
+        holder.close()
+
+    threading.Thread(target=release).start()
+    second = db()  # waits out the lock (connect timeout) instead of wiping
+    assert p.exists()
+    assert second.execute("SELECT COUNT(*) FROM tools").fetchone()[0] == 1
+    assert "corrupted" not in capsys.readouterr().out
+    second.close()
+    first.close()

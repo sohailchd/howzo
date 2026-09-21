@@ -42,7 +42,8 @@ def man_oneliner(name):
         return "", ""
     try:
         p = subprocess.run(["man", name], capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=8)
+                           encoding="utf-8", errors="replace", timeout=8,
+                           stdin=subprocess.DEVNULL)
         out = p.stdout or ""
     except Exception:
         return "", ""
@@ -57,7 +58,8 @@ def capture_help(name, path=""):
     for flag in ("--help", "-h"):
         try:
             r = subprocess.run([p, flag], capture_output=True, text=True,
-                               encoding="utf-8", errors="replace", timeout=5)
+                               encoding="utf-8", errors="replace", timeout=5,
+                               stdin=subprocess.DEVNULL)
             out = (r.stdout or r.stderr).strip()
             if len(out) > 60:
                 return out[:4000]

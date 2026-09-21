@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "howzo": {
-      "command": "/Users/sohail/.local/bin/howzo",
-      "args": ["mcp"],
-      "description": "Knows your machine: ask in English how to do something, get the locally-installed tool + command. Tools: howzo_ask, howzo_whatis, howzo_list."
-    }
-  }
-}

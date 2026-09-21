@@ -74,6 +74,13 @@ def _lev(a, b, cap=2):
 _vocab_cache = {}
 
 
+def clear_vocab_cache():
+    """Drop in-memory vocab maps. Call after the corpus changes (a rescan):
+    the on-disk vocab table is cleared by cmd_scan, and this drops any map a
+    live connection cached from the old corpus."""
+    _vocab_cache.clear()
+
+
 def _vocab(c):
     """Word -> document-frequency map over the whole index, built once per db."""
     key = c.execute("PRAGMA database_list").fetchone()[2]
@@ -131,7 +138,12 @@ def expand_tokens(c, toks, cap=1):
                 search.append(best)
     n_docs = c.execute("SELECT count(*) FROM tools").fetchone()[0]
     fts = [t for t in search if v.get(t, 0) <= n_docs / 2]
-    return search, (fts or search), [fixed.get(t, t) for t in toks]
+    if not fts:
+        # every term is ultra-common; reverting to the full set would
+        # reinstate the negative-idf query this filter exists to avoid —
+        # keep just the rarest term so the query stays discriminating
+        fts = [min(search, key=lambda t: (v.get(t, 0), t))]
+    return search, fts, [fixed.get(t, t) for t in toks]
 
 
 def find_by_name(c, q):

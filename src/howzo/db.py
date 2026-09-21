@@ -49,7 +49,11 @@ def db(path=None):
     d = os.path.dirname(p) or "."
     os.makedirs(d, exist_ok=True)
     try:
-        c = sqlite3.connect(p)
+        # timeout: wait out a concurrent howzo process (scan in one
+        # terminal, ask in another) instead of erroring immediately.
+        # connect(timeout=...) is used rather than PRAGMA busy_timeout
+        # because executescript does not honor the pragma.
+        c = sqlite3.connect(p, timeout=5.0)
         c.row_factory = sqlite3.Row
         c.executescript(SCHEMA)
         # vocab is a derived cache: if it predates the df column, drop it to
@@ -59,13 +63,19 @@ def db(path=None):
             c.execute("DROP TABLE vocab")
         c.execute("SELECT count(*) FROM tools")  # probe
         return c
-    except sqlite3.DatabaseError:
-        # corrupted db (e.g. after a schema change) -> wipe and rebuild from a scan
+    except sqlite3.DatabaseError as e:
+        msg = str(e).lower()
+        # "database is locked" is an OperationalError (a DatabaseError
+        # subclass) — waiting on it is normal, and deleting the user's index
+        # because another howzo process is writing is catastrophic. Only a
+        # genuinely unreadable file gets rebuilt.
+        if "not a database" not in msg and "malformed" not in msg:
+            raise
         print(f"  warning: db corrupted, rebuilding ({p})")
         for f in os.listdir(d):
             if f.startswith("howzo.db"):
                 os.remove(os.path.join(d, f))
-        c = sqlite3.connect(p)
+        c = sqlite3.connect(p, timeout=5.0)
         c.row_factory = sqlite3.Row
         c.executescript(SCHEMA)
         return c

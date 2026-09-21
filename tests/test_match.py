@@ -141,3 +141,16 @@ class TestExpandTokens:
         search, fts, _ = match.expand_tokens(c, ["file", "pattern"])
         assert "file" in search and "pattern" in search
         assert fts == ["pattern"]  # 'file' (4/6 docs) dropped, 'pattern' (1/6) kept
+
+    def test_ultra_common_all_keeps_rarest(self, c):
+        # when EVERY term is ultra-common, reverting to the full set would
+        # reinstate the negative-idf query — keep just the rarest term
+        from howzo.db import upsert
+        for name in ("aaa", "bbb", "ddd", "eee"):
+            upsert(c, name, "system", "", "", "file word here")
+        upsert(c, "ccc", "system", "", "", "alpha beta gamma")
+        upsert(c, "fff", "system", "", "", "nothing here at all")
+        c.commit()
+        search, fts, _ = match.expand_tokens(c, ["file", "word"])
+        assert search == ["file", "word"]
+        assert fts == ["file"]  # both in 4/6 docs; tie broken alphabetically

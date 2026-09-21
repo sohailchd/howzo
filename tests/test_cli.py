@@ -230,3 +230,20 @@ def test_ask_typo_query_finds_grep(c, capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert out.index("grep") < out.index("findrule")
+
+
+def test_scan_invalidates_vocab(c, monkeypatch, capsys):
+    # the typo-corrector's df cache was built from the pre-rescan corpus;
+    # a rescan must drop it so the next query rebuilds from fresh tools
+    from howzo import match
+    from howzo.commands import cmd_scan
+    from howzo.db import upsert
+    upsert(c, "aaa", "system", "", "", "file pattern words")
+    upsert(c, "bbb", "system", "", "", "other words here")
+    c.commit()
+    match.expand_tokens(c, ["fike"])  # builds the on-disk vocab
+    assert c.execute("SELECT COUNT(*) FROM vocab").fetchone()[0] > 0
+    monkeypatch.setattr("howzo.commands.scanners", lambda: [])
+    assert cmd_scan([]) == 0
+    assert c.execute("SELECT COUNT(*) FROM vocab").fetchone()[0] == 0
+    capsys.readouterr()

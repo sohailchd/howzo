@@ -6,8 +6,9 @@ import time
 from . import config
 from .db import db, upsert
 from .helptext import capture_help
-from .match import (coverage, expand_tokens, fts_query, find_by_name,
-                    has_word, query_tokens, rank_rows)
+from .match import (clear_vocab_cache, coverage, expand_tokens, fts_query,
+                    find_by_name, has_word, query_tokens, rank_rows)
+from . import proc
 from .render import render_tool
 from .scan import scanners
 
@@ -34,6 +35,8 @@ def cmd_scan(args):
     t0 = time.time()
     for fn in scanners():
         fn(c)
+    if proc.failures:
+        print(f"  warning: {proc.failures} commands failed during scan (skipped)")
     # custom tools added via 'howzo add' must survive rescans
     for name, (src, ver, path, one, w, h, h_at) in custom_rows.items():
         c.execute("INSERT INTO tools(name, source, version, path, oneliner, when_to_use, help_excerpt, "
@@ -50,6 +53,10 @@ def cmd_scan(args):
     # curated 'when to use' hints for core tools (never clobbers user values)
     from .hints import apply_hints
     apply_hints(c)
+    # the typo-corrector's vocab df cache was built from the pre-rescan
+    # corpus: drop it so the next query rebuilds from the fresh tools
+    c.execute("DELETE FROM vocab")
+    clear_vocab_cache()
     c.commit()
     total = c.execute("SELECT COUNT(*) FROM tools").fetchone()[0]
     print(f"  inventory: {total} tools in {time.time()-t0:.0f}s")
@@ -102,7 +109,8 @@ def cmd_ask(args):
         for t in toks:
             like = f"%{t}%"
             for r in c.execute("SELECT * FROM tools WHERE lower(name) LIKE ? OR lower(oneliner) LIKE ? "
-                               "OR lower(when_to_use) LIKE ? OR lower(help_excerpt) LIKE ? LIMIT 60",
+                               "OR lower(when_to_use) LIKE ? OR lower(help_excerpt) LIKE ? "
+                               "ORDER BY name LIMIT 60",
                                (like, like, like, like)):
                 hay = " ".join(filter(None, [r["name"], r["oneliner"], r["when_to_use"], r["help_excerpt"]]))
                 if has_word(hay, t):
@@ -173,7 +181,9 @@ def cmd_deep(args):
         return 1
     name = args[0]
     c = db()
-    row = c.execute("SELECT * FROM tools WHERE lower(name)=?", (name.lower(),)).fetchone()
+    # Windows indexes names with the .exe suffix; accept the bare name too
+    row = c.execute("SELECT * FROM tools WHERE lower(name) IN (?, ?)",
+                    (name.lower(), name.lower() + ".exe")).fetchone()
     if not row:
         print(f"not in inventory: {name} (run 'howzo scan')")
         return 1

@@ -45,10 +45,15 @@ def scan_system(c):
         if not os.path.isdir(d):
             continue
         for n in os.listdir(d):
-            if n not in seen and n not in claimed:
-                seen.add(n)
-                names.append(n)
-                paths[n] = d
+            if n in seen or n in claimed:
+                continue
+            # skip non-executables (man pages for them are noise); on Unix
+            # X_OK is the executable bit, which is what we actually need
+            if not os.access(os.path.join(d, n), os.X_OK):
+                continue
+            seen.add(n)
+            names.append(n)
+            paths[n] = d
     print(f"  system: {len(names)} binaries, fetching man pages (slow part)...")
     n = 0
     for name in names:

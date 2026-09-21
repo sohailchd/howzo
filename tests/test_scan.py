@@ -116,8 +116,9 @@ def test_scripts_scanner(c, monkeypatch, tmp_path):
 def test_system_scanner(c, monkeypatch, tmp_path):
     bdir = tmp_path / "usr" / "bin"
     bdir.mkdir(parents=True)
-    (bdir / "lsx").write_text("x")
-    (bdir / "grep").write_text("x")
+    for n in ("lsx", "grep"):  # fake binaries must look real: executable
+        (bdir / n).write_text("x")
+        os.chmod(bdir / n, 0o755)
     monkeypatch.setattr(system, "SYSTEM_DIRS", (str(bdir),))
     monkeypatch.setattr(system, "man_oneliner",
                         lambda name: ("print lines matching a pattern", "NAME\n  grep - print lines")
@@ -137,11 +138,13 @@ def test_system_scanner_walks_path_dirs(c, monkeypatch, tmp_path):
     # the PATH-dir binary wins (it's the one the shell would run)
     custom = tmp_path / "cargo-bin"
     custom.mkdir()
-    (custom / "cargo").write_text("x")
-    (custom / "grep").write_text("x")
+    for n in ("cargo", "grep"):  # fake binaries must look real: executable
+        (custom / n).write_text("x")
+        os.chmod(custom / n, 0o755)
     std = tmp_path / "usr-bin"
     std.mkdir()
     (std / "grep").write_text("x")
+    os.chmod(std / "grep", 0o755)
     monkeypatch.setattr(system, "SYSTEM_DIRS", (str(std),))
     monkeypatch.setenv("PATH", str(custom))
     monkeypatch.setattr(system, "man_oneliner",
@@ -169,8 +172,9 @@ def test_system_scanner_keeps_claimed_names(c, monkeypatch, tmp_path):
     upsert(c, "qpdf", "brew", "12.1.0", "", "manipulate PDF files")
     homebrew = tmp_path / "homebrew-bin"
     homebrew.mkdir()
-    (homebrew / "qpdf").write_text("x")
-    (homebrew / "ghostty").write_text("x")
+    for n in ("qpdf", "ghostty"):  # fake binaries must look real: executable
+        (homebrew / n).write_text("x")
+        os.chmod(homebrew / n, 0o755)
     monkeypatch.setattr(system, "SYSTEM_DIRS", ())
     monkeypatch.setenv("PATH", str(homebrew))
     monkeypatch.setattr(system, "man_oneliner",
@@ -187,6 +191,7 @@ def test_system_scanner_records_found_dir(c, monkeypatch, tmp_path):
     sbindir = tmp_path / "sbin"
     sbindir.mkdir()
     (sbindir / "ifconfig").write_text("x")
+    os.chmod(sbindir / "ifconfig", 0o755)
     monkeypatch.setattr(system, "SYSTEM_DIRS", (str(tmp_path / "missing"), str(sbindir)))
     monkeypatch.setenv("PATH", "")  # isolate from the real environment
     monkeypatch.setattr(system, "man_oneliner",

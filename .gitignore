@@ -10,6 +10,9 @@ venv/
 .pytest_cache/
 .DS_Store
 
+# local machine config (paths are per-user; see README for setup)
+.mcp.json
+
 # environment & secrets (never commit)
 .env
 .env.*
