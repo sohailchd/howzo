@@ -33,7 +33,7 @@ def test_fts_stays_in_sync(c):
 
 
 def test_corrupted_db_rebuilds(tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("HOWZO_DB", str(tmp_path))
+    monkeypatch.setenv("HOWZO_DB", str(tmp_path / "howzo.db"))
     p = tmp_path / "howzo.db"
     p.write_bytes(b"this is not a sqlite database at all")
     c = db()

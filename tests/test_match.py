@@ -82,3 +82,62 @@ class TestFindByName:
                    "when_to_use": "", "help_excerpt": "host-to-find, ip addresses", "score": -15.0}
         rows = match.rank_rows([scraped, curated], ["find", "ip", "address"])
         assert rows[0]["name"] == "ifconfig"
+
+
+class TestLev:
+    def test_distances(self):
+        from howzo.match import _lev
+        assert _lev("fike", "file") == 1
+        assert _lev("macthing", "matching") == 1
+        assert _lev("occurence", "occurrence") == 1
+        assert _lev("kitten", "sitting", cap=3) == 3
+
+
+class TestExpandTokens:
+    def test_typo_correction(self, c):
+        from howzo.db import upsert
+        upsert(c, "grep", "system", "", "", "print lines matching a pattern")
+        c.execute("UPDATE tools SET help_excerpt='print selected lines from a file, first occurrence of a match' WHERE name='grep'")
+        c.commit()
+        search, fts, resolved = match.expand_tokens(c, match.query_tokens("find macthing occurence in fike"))
+        assert "matching" in search and "file" in search and "occurrence" in search
+        assert set(fts) <= set(search)
+        assert resolved == ["find", "matching", "occurrence", "file"]
+
+    def test_exact_tokens_untouched(self, c):
+        from howzo.db import upsert
+        upsert(c, "kill", "system", "", "", "terminate or signal a process")
+        c.commit()
+        search, fts, resolved = match.expand_tokens(c, match.query_tokens("kill a process"))
+        assert search == ["kill", "process"]
+        assert resolved == ["kill", "process"]
+        assert fts
+
+    def test_ties_go_to_more_frequent_word(self, c):
+        # 'fike' is one edit from both 'file' and 'fire'; the word that
+        # appears in more docs wins the tie. The corpus is big enough that
+        # 'file' stays below the 50% ultra-common cutoff.
+        from howzo.db import upsert
+        upsert(c, "file", "system", "", "", "create and write files")
+        upsert(c, "firewall", "system", "", "", "fire traffic filters")
+        upsert(c, "other", "system", "", "", "something with a file in it")
+        upsert(c, "alpha", "system", "", "", "sort lists alphabetically")
+        upsert(c, "beta", "system", "", "", "measure memory bandwidth")
+        c.commit()
+        search, fts, resolved = match.expand_tokens(c, ["fike"])
+        assert "file" in search and "fire" not in search
+        assert "file" in fts
+
+    def test_ultra_common_terms_dropped_from_fts(self, c):
+        # a term in >50% of the corpus gets negative bm25 idf — it must
+        # not be in the FTS query (it only pushes good rows out of the
+        # window), but it stays in the search set for coverage
+        from howzo.db import upsert
+        for name in ("aaa", "bbb", "ddd", "eee"):
+            upsert(c, name, "system", "", "", "file words here")
+        upsert(c, "ccc", "system", "", "", "pattern only")
+        upsert(c, "fff", "system", "", "", "nothing here at all")
+        c.commit()
+        search, fts, _ = match.expand_tokens(c, ["file", "pattern"])
+        assert "file" in search and "pattern" in search
+        assert fts == ["pattern"]  # 'file' (4/6 docs) dropped, 'pattern' (1/6) kept

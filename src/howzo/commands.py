@@ -6,7 +6,8 @@ import time
 from . import config
 from .db import db, upsert
 from .helptext import capture_help
-from .match import coverage, fts_query, find_by_name, has_word, query_tokens, rank_rows
+from .match import (coverage, expand_tokens, fts_query, find_by_name,
+                    has_word, query_tokens, rank_rows)
 from .render import render_tool
 from .scan import scanners
 
@@ -80,19 +81,21 @@ def cmd_ask(args):
     if row:
         print(render_tool(row, q))
         return 0
-    ftsq = fts_query(q)
     toks = query_tokens(q)
+    # spell-correct tokens that have no exact match in the index vocabulary
+    toks, fts_toks, resolved = expand_tokens(c, toks) if toks else ([], [], [])
+    ftsq = " OR ".join('"%s"' % t for t in fts_toks)
     rows = []
-    if ftsq:
-        try:
-            # generous candidate window: BM25 alone favors short docs with
-            # dense term matches; the coverage+field re-rank below needs to
-            # be able to see tools whose matches are sparse but complete
-            rows = c.execute(
-                "SELECT t.*, bm25(tools_fts) AS score FROM tools_fts f JOIN tools t ON t.id=f.rowid "
-                "WHERE tools_fts MATCH ? ORDER BY score LIMIT 40", (ftsq,)).fetchall()
-        except sqlite3.OperationalError:
-            rows = []
+    try:
+        # generous candidate window: for multi-token OR queries BM25 ranks
+        # short docs with dense term matches first, and the right tool can
+        # sit deep (sparse-but-complete matches). The coverage+field re-rank
+        # below is what actually orders results, so give it a wide window.
+        rows = c.execute(
+            "SELECT t.*, bm25(tools_fts) AS score FROM tools_fts f JOIN tools t ON t.id=f.rowid "
+            "WHERE tools_fts MATCH ? ORDER BY score LIMIT 200", (ftsq,)).fetchall()
+    except sqlite3.OperationalError:
+        rows = []
     if not rows and toks:
         # fallback: broad LIKE candidates per token, then word-boundary filter
         cand = {}
@@ -109,11 +112,27 @@ def cmd_ask(args):
     if not rows:
         print(f"no match for: {q}\n  (try 'howzo scan --deep' to index --help text)")
         return 1
-    for r in rows[:3]:
+    # Versioned duplicate names (findrule5.34 vs findrule — the same man
+    # page indexed twice) waste a result slot; show the base name only.
+    picked, shown = [], []
+    for r in rows:
+        name = r["name"]
+        dup = False
+        for s in shown:
+            if name != s and name.startswith(s) and name[len(s):] \
+                    and all(ch in "0123456789." for ch in name[len(s):]):
+                dup = True
+                break
+        if dup:
+            continue
+        picked.append(r)
+        shown.append(name)
         print(render_tool(r, q))
         print()
-    best_cov = max(coverage(r, toks) for r in rows[:3])
-    if best_cov < len(toks):
+        if len(picked) == 3:
+            break
+    best_cov = max(coverage(r, resolved) for r in picked) if resolved else 0
+    if resolved and best_cov < len(resolved):
         print("  (partial match - no tool advertises all terms)")
     return 0
 

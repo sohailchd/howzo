@@ -9,6 +9,14 @@ from . import config
 
 HINTS = {
     "ifconfig": "find or change your ip address, network interface (en0/wlan0 on macOS), mac address, dhcp",
+    "grep": "search for lines that match a pattern in file contents, command output, or log files",
+    "find": "search the file system for files by name, size, or age and act on them",
+    "df": "check disk space, free space on a volume, how full the disk is",
+    "ps": "list running processes, what is running, cpu and memory usage of a process",
+    "top": "watch running processes live, cpu and memory usage, find a runaway process",
+    "du": "how much space a directory or file takes, disk usage of a folder",
+    "kill": "stop or terminate a process, send a signal to a process",
+    "sips": "convert, resize, rotate, or crop an image file; export an image to pdf (macOS)",
     "ip": "show ip addresses and interfaces (Linux: ip addr)",
     "ipconfig": "show your ip address (Windows: ipconfig /all)",
     "route": "default gateway, routing table",

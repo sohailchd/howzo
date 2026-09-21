@@ -13,7 +13,7 @@ if str(SRC) not in sys.path:
 def c(tmp_path, monkeypatch):
     """A fresh, empty howzo database in a temp dir (via HOWZO_DB)."""
     from howzo.db import db
-    monkeypatch.setenv("HOWZO_DB", str(tmp_path))
+    monkeypatch.setenv("HOWZO_DB", str(tmp_path / "howzo.db"))
     conn = db()
     yield conn
     conn.close()

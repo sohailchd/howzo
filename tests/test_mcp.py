@@ -30,7 +30,7 @@ def test_tools_list():
 
 
 def test_tools_call_whatis(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOWZO_DB", str(tmp_path))
+    monkeypatch.setenv("HOWZO_DB", str(tmp_path / "howzo.db"))
     c = db()
     upsert(c, "jq", "brew", "1.7", "", "commandline JSON processor")
     c.commit()
@@ -44,7 +44,7 @@ def test_tools_call_whatis(tmp_path, monkeypatch):
 
 
 def test_tools_call_unknown_tool(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOWZO_DB", str(tmp_path))
+    monkeypatch.setenv("HOWZO_DB", str(tmp_path / "howzo.db"))
     resp = mcp.mcp_handle({"jsonrpc": "2.0", "id": 5, "method": "tools/call",
                            "params": {"name": "howzo_bogus", "arguments": {}}})
     assert resp["result"]["isError"] is True

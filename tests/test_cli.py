@@ -150,7 +150,7 @@ class TestMainDispatch:
         assert "Commands:" in capsys.readouterr().out
 
     def test_db_command(self, tmp_path, monkeypatch, capsys):
-        monkeypatch.setenv("HOWZO_DB", str(tmp_path))
+        monkeypatch.setenv("HOWZO_DB", str(tmp_path / "howzo.db"))
         from howzo.cli import main
         assert main(["db"]) == 0
         assert str(tmp_path) in capsys.readouterr().out
@@ -216,3 +216,17 @@ def test_scan_hints_ipconfig_only_on_windows(c, monkeypatch, capsys):
     assert commands.cmd_scan([]) == 0
     capsys.readouterr()
     assert c.execute("SELECT when_to_use FROM tools WHERE name='ipconfig'").fetchone()[0] == hints.HINTS["ipconfig"]
+
+
+def test_ask_typo_query_finds_grep(c, capsys):
+    from howzo.db import upsert
+    upsert(c, "grep", "system", "", "", "print lines matching a pattern")
+    upsert(c, "findrule", "system", "", "", "command line wrapper to File::Find::Rule")
+    # grep carries the production curated hint (see hints.HINTS)
+    c.execute("UPDATE tools SET when_to_use='search for lines that match a pattern in file contents, command output, or log files' WHERE name='grep'")
+    c.execute("UPDATE tools SET help_excerpt='print selected lines from a file, first occurrence of a match' WHERE name='grep'")
+    c.commit()
+    rc = commands.cmd_ask(["find macthing occurence in fike"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert out.index("grep") < out.index("findrule")

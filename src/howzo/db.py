@@ -18,6 +18,10 @@ CREATE TABLE IF NOT EXISTS tools (
   help_captured_at TEXT,
   scanned_at TEXT
 );
+CREATE TABLE IF NOT EXISTS vocab (
+  word TEXT PRIMARY KEY,
+  df INTEGER DEFAULT 1
+);
 CREATE VIRTUAL TABLE IF NOT EXISTS tools_fts USING fts5(
   name, oneliner, when_to_use, help_excerpt, content='tools', content_rowid='id',
   tokenize='porter unicode61'
@@ -48,6 +52,11 @@ def db(path=None):
         c = sqlite3.connect(p)
         c.row_factory = sqlite3.Row
         c.executescript(SCHEMA)
+        # vocab is a derived cache: if it predates the df column, drop it to
+        # force a rebuild (schema changes never migrate cache tables)
+        cols = [r[1] for r in c.execute("PRAGMA table_info(vocab)")]
+        if cols and "df" not in cols:
+            c.execute("DROP TABLE vocab")
         c.execute("SELECT count(*) FROM tools")  # probe
         return c
     except sqlite3.DatabaseError:
