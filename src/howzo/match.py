@@ -5,6 +5,7 @@ so 'kill' never matches 'skill' and 'port' never matches 'report'.
 """
 import os
 import re
+import sqlite3
 
 STOP = {"a", "an", "and", "are", "as", "at", "can", "do", "does", "for", "from",
         "get", "how", "i", "in", "into", "is", "it", "me", "my", "on", "of", "or", "that",
@@ -30,9 +31,13 @@ def _tok_in(tok, words):
     """Prefix-stemmed containment: 'match'~'matching', 'find'~'finds',
     'file'~'filenames'. Bidirectional so a corrected longer token still
     hits its shorter base form. Substring confusables stay excluded:
-    'kill' is not in 'skill', 'port' not in 'report'."""
+    'kill' is not in 'skill', 'port' not in 'report'. A short query token
+    (len < 4) only counts as an exact match: 'ip' must not hit 'ip2cc'
+    and 'pdf' must not hit 'pdftohtml' — format/abbreviation words are
+    not stems of those names."""
     for w in words:
-        if w.startswith(tok) or (len(w) >= 3 and tok.startswith(w)):
+        if w == tok or (len(tok) >= 4 and w.startswith(tok)) \
+                or (len(w) >= 3 and tok.startswith(w)):
             return True
     return False
 
@@ -138,13 +143,57 @@ def expand_tokens(c, toks, cap=1):
                 seen.add(best)
                 search.append(best)
     n_docs = c.execute("SELECT count(*) FROM tools").fetchone()[0]
-    fts = [t for t in search if v.get(t, 0) <= n_docs / 2]
+
+    def fts_df(t, _cache={}):
+        """How many docs the FTS index actually matches for t.
+
+        Measured on the FTS index itself rather than the raw-word vocab df:
+        the index is porter-stemmed, so 'files' matches every 'file' doc —
+        the vocab df of the exact word would keep 'files' in the query and
+        the OR of it with the real terms would bury the right tool (ls for
+        'list files') outside the candidate window."""
+        if t not in _cache:
+            try:
+                _cache[t] = c.execute(
+                    "SELECT count(*) FROM tools_fts WHERE tools_fts MATCH ?",
+                    ('"%s"' % t,)).fetchone()[0]
+            except sqlite3.OperationalError:
+                _cache[t] = v.get(t, 0)
+        return _cache[t]
+
+    fts = [t for t in search if fts_df(t) <= n_docs / 2]
     if not fts:
         # every term is ultra-common; reverting to the full set would
         # reinstate the negative-idf query this filter exists to avoid —
         # keep just the rarest term so the query stays discriminating
-        fts = [min(search, key=lambda t: (v.get(t, 0), t))]
+        fts = [min(search, key=lambda t: (fts_df(t), t))]
     return search, fts, [fixed.get(t, t) for t in toks]
+
+
+def name_hits(c, toks):
+    """Rows whose name (or well-known alias) matches a token the same way
+    rank_rows credits it: exact at any length, prefix for len>=4, or an
+    alias ('list' -> ls). These rows must always reach the re-rank — a
+    name-level hit is the strongest signal and must not depend on how
+    deep BM25 buries the row (ls ranks 233rd on 'list' alone)."""
+    ids = set()
+    for t in toks:
+        for r in c.execute("SELECT id FROM tools WHERE lower(name) = ?", (t,)):
+            ids.add(r[0])
+        if len(t) >= 4:
+            for r in c.execute("SELECT id FROM tools WHERE lower(name) LIKE ?", (t + "%",)):
+                ids.add(r[0])
+    for name, alias in NAME_ALIASES.items():
+        if any(_tok_in(t, [name, alias]) for t in toks):
+            names = [name] + ([name + ".exe"] if os.name == "nt" else [])
+            for n in names:
+                r = c.execute("SELECT id FROM tools WHERE name = ?", (n,)).fetchone()
+                if r:
+                    ids.add(r[0])
+    if not ids:
+        return []
+    return c.execute("SELECT * FROM tools WHERE id IN (%s)"
+                     % ",".join("?" * len(ids)), sorted(ids)).fetchall()
 
 
 def find_by_name(c, q):
@@ -167,12 +216,29 @@ def find_by_name(c, q):
     return None
 
 
+# Short utilities whose name is an abbreviation, not a stem: users type the
+# full word, and prefix-stemming can't bridge "cp" to "copy" (c-o-p-y does
+# not start with c-p). A query token that prefix-matches the alias word
+# counts as a NAME-tier hit for that tool.
+NAME_ALIASES = {
+    "cp": "copy",
+    "mv": "move",
+    "rm": "remove",
+    "ln": "link",
+    "ls": "list",
+    "mkdir": "directory",
+}
+
+
 def rank_rows(rows, toks):
     """Re-rank candidates by field tier: intent fields beat description.
 
-    Three tiers, each normalized by the number of query tokens:
-      2.0  name + when_to_use   — intent fields (curated or the tool's
-           own name; a hit here is the strongest signal)
+    Four tiers, each normalized by the number of query tokens:
+      3.0  name                 — the tool's own name (or its well-known
+           alias: cp = copy, mv = move, ...; the strongest single signal)
+      2.0  when_to_use          — curated intent phrase; mentions of generic
+           words ("file", "folder") are real intent here but must not beat
+           a name-level hit
       1.0  oneliner             — concise description (curated for
            package tools, man synopsis for system tools)
       0.5  help_excerpt         — scraped man text; long pages mention
@@ -187,11 +253,17 @@ def rank_rows(rows, toks):
             s = r["score"]
         except (IndexError, KeyError):
             s = 0.0
-        intent = " ".join(filter(None, [r["name"], r["when_to_use"]])).lower()
+        name = r["name"].lower()
+        if name.endswith(".exe"):
+            name = name[:-4]
+        alias = NAME_ALIASES.get(name)
+        when = (r["when_to_use"] or "").lower()
         oneliner = (r["oneliner"] or "").lower()
         excerpt = (r["help_excerpt"] or "").lower()
-        i_cov = sum(1 for t in toks if _tok_in(t, re.findall(r"[a-z0-9]+", intent)))
+        n_cov = sum(1 for t in toks if _tok_in(t, [name] + ([alias] if alias else [])))
+        w_cov = sum(1 for t in toks if _tok_in(t, re.findall(r"[a-z0-9]+", when)))
         o_cov = sum(1 for t in toks if _tok_in(t, re.findall(r"[a-z0-9]+", oneliner)))
         e_cov = sum(1 for t in toks if _tok_in(t, re.findall(r"[a-z0-9]+", excerpt)))
-        return (-(2.0 * i_cov / n + 1.0 * o_cov / n + 0.5 * e_cov / n), s, r["name"])
+        return (-(3.0 * n_cov / n + 2.0 * w_cov / n + 1.0 * o_cov / n + 0.5 * e_cov / n),
+                s, r["name"])
     return sorted(rows, key=rank_key)

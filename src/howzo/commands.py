@@ -7,7 +7,7 @@ from . import config
 from .db import db, upsert
 from .helptext import capture_help
 from .match import (clear_vocab_cache, coverage, expand_tokens, fts_query,
-                    find_by_name, has_word, query_tokens, rank_rows)
+                    find_by_name, has_word, name_hits, query_tokens, rank_rows)
 from . import proc
 from .render import render_tool
 from .scan import scanners
@@ -101,13 +101,30 @@ def cmd_ask(args):
     ftsq = " OR ".join('"%s"' % t for t in fts_toks)
     rows = []
     try:
-        # generous candidate window: for multi-token OR queries BM25 ranks
-        # short docs with dense term matches first, and the right tool can
-        # sit deep (sparse-but-complete matches). The coverage+field re-rank
+        # Candidate window = the OR of all terms (dense multi-term matches)
+        # PLUS each term's own top rows. BM25 ranks short docs with dense
+        # matches first, so a single generic term (500 docs contain "list")
+        # can push the right tool — whose one sparse mention of the term IS
+        # its definition (ls: "list directory contents") — out of a fixed
+        # window. The per-term windows keep it in. The coverage+field re-rank
         # below is what actually orders results, so give it a wide window.
+        by_id = {}
         rows = c.execute(
             "SELECT t.*, bm25(tools_fts) AS score FROM tools_fts f JOIN tools t ON t.id=f.rowid "
             "WHERE tools_fts MATCH ? ORDER BY score LIMIT 200", (ftsq,)).fetchall()
+        for r in rows:
+            by_id[r["id"]] = r
+        for t in fts_toks:
+            per = c.execute(
+                "SELECT t.*, bm25(tools_fts) AS score FROM tools_fts f JOIN tools t ON t.id=f.rowid "
+                "WHERE tools_fts MATCH ? ORDER BY score LIMIT 120", ('"%s"' % t,)).fetchall()
+            for r in per:
+                by_id.setdefault(r["id"], r)
+        # name/alias hits always join the window (BM25 depth is irrelevant
+        # to a tool whose name IS the query word)
+        for r in name_hits(c, fts_toks):
+            by_id.setdefault(r["id"], r)
+        rows = list(by_id.values())
     except sqlite3.OperationalError:
         rows = []
     if not rows and toks:

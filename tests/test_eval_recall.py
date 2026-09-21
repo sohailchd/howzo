@@ -42,6 +42,10 @@ CORPUS = [
     ("tar", "manipulate tape archives"),
     # files
     ("ls", "list directory contents"),
+    ("cp", "copy files"),
+    ("mv", "move (rename) files"),
+    ("rm", "remove file system objects"),
+    ("trash", "Moves files and directories to the user trash folder"),
     ("cat", "concatenate files and print"),
     ("head", "output the first part of files"),
     ("tail", "output the last part of files"),
@@ -96,6 +100,13 @@ CASES = [
     ("how to filter lines with a pattern", "grep", {"grep"}),
     ("how to connect to a remote server", "ssh", {"ssh"}),
     ("how to archive a folder", None, {"tar", "zip"}),
+    # cp's defining word is "copy" but "copy" does not prefix-match the name
+    # "cp" — the alias table must carry the name-tier hit, or du/trash (whose
+    # when/oneliner mention file+folder) steal top-1
+    ("copy file to folder", "cp", {"cp"}),
+    ("how to move a file", "mv", {"mv"}),
+    ("how to remove a file", "rm", {"rm"}),
+    ("how to list files", "ls", {"ls"}),
 ]
 
 
