@@ -199,7 +199,13 @@ def _top(capsys, query, k=3):
 
 def _judge(case, names):
     """None when the case passes, else the reason it failed."""
-    if case.ok_top1 and names and names[0] not in case.ok_top1:
+    # An empty answer is a failure whatever the case asks for. Without this,
+    # a case that names only a correct top-1 (no need_topk) passes vacuously
+    # when the command prints nothing at all, so "found nothing" and "found the
+    # right tool" score the same.
+    if not names:
+        return "no answer at all"
+    if case.ok_top1 and names[0] not in case.ok_top1:
         return "top1 is %r, expected one of %s" % (names[0], sorted(case.ok_top1))
     missing = case.need_topk - set(names)
     if missing:
@@ -267,3 +273,11 @@ def test_scoreboard(bench, capsys):
         assert counts.get(cat, 0) >= was, (
             "category %r went backwards: %d/%d passing, %d when the baseline was recorded"
             % (cat, counts.get(cat, 0), len([c for c in CASES if c.category == cat]), was))
+    # Forbidden answers get their own gate rather than riding on the top-1
+    # check. Two of the three failing cases fail this way - the right tool is
+    # already first, and a wrong tool sits at rank three - so a change that
+    # keeps the right answer but drags in a wrong one would otherwise pass
+    # unnoticed while the known-miss set stayed the same size.
+    new_forbidden = sorted(set(forbid_violations) - set(baseline["forbidden_answers"]))
+    assert not new_forbidden, (
+        "forbidden answers where the baseline had none: %s" % new_forbidden)

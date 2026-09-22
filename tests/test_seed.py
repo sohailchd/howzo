@@ -38,7 +38,11 @@ def test_every_platform_is_indexed(c):
     assert by_name["ls"] == "all"
 
 
-def test_local_row_wins_and_is_never_clobbered(c):
+def test_local_row_wins_and_seed_does_not_clobber_its_text(c):
+    # apply_seed alone never overwrites a value that is already there. That is
+    # not the same as the value being durable: see the rescan tests at the end
+    # of this file, where a scanned row is rebuilt empty and the pack refills
+    # it, because the pack owns when_to_use.
     upsert(c, "cat", "system", "", "/bin/cat", "concatenate files")
     c.execute("UPDATE tools SET when_to_use='user says so' WHERE name='cat'")
     c.commit()
@@ -134,3 +138,69 @@ def test_upsert_clears_stale_seed_platform(c):
     seed.apply_seed(c, platform="macos")
     row = c.execute("SELECT platform FROM tools WHERE name='convert'").fetchone()
     assert (row[0] or "") == ""
+
+
+# ---- rescan policy: who owns when_to_use ----------------------------------
+#
+# cmd_scan rebuilds every scanned row, then carries edits forward. It must not
+# carry when_to_use forward for scanned rows: db.upsert has no such parameter
+# and 'howzo add' writes oneliner, so the bundled pack is that column's only
+# writer. Restoring it made bundled text look like user text, which froze every
+# machine on the wording it first scanned and left withdrawn entries behind.
+
+def _when(c, name):
+    return c.execute("SELECT when_to_use FROM tools WHERE name=?", (name,)).fetchone()[0]
+
+
+def _rescan(c, monkeypatch, pack):
+    """One scan: rebuild from the system, carry edits, re-apply the pack.
+
+    Mirrors cmd_scan's order (custom rows re-inserted, edits carried, then
+    apply_seed) so the test exercises the shipped sequence, not a paraphrase.
+    """
+    from howzo.commands import preserve_edits
+    keep = {r["name"]: (r["help_excerpt"], r["help_captured_at"], r["when_to_use"])
+            for r in c.execute("SELECT name, help_excerpt, help_captured_at, when_to_use FROM tools")}
+    manual = {r["name"]: (r["source"], r["version"], r["path"], r["oneliner"],
+                          r["when_to_use"], r["help_excerpt"], r["help_captured_at"])
+              for r in c.execute("SELECT * FROM tools WHERE source IN ('custom','npx')")}
+    c.execute("DELETE FROM tools")
+    upsert(c, "ls", "system", "1.0", "/bin/ls", "list directory contents")
+    for name, (src, ver, path, one, w, h, h_at) in manual.items():
+        c.execute("INSERT INTO tools(name, source, version, path, oneliner, when_to_use, "
+                  "help_excerpt, help_captured_at) VALUES(?,?,?,?,?,?,?,?) "
+                  "ON CONFLICT(name) DO NOTHING", (name, src, ver, path, one, w, h, h_at))
+    preserve_edits(c, keep)
+    monkeypatch.setattr(seed, "SEED", pack)
+    seed.apply_seed(c, platform="macos")
+    c.commit()
+
+
+def _pack_with_ls(text):
+    ls = seed.entry("ls")
+    return [e for e in seed.SEED if e[0] != "ls"] + [("ls", ls[1], ls[2], text)]
+
+
+def test_rescan_propagates_pack_edits(c, monkeypatch):
+    _rescan(c, monkeypatch, _pack_with_ls("search a folder for files"))
+    assert _when(c, "ls") == "search a folder for files"
+    edited = "list the files and folders in a directory, one path per line"
+    _rescan(c, monkeypatch, _pack_with_ls(edited))
+    assert _when(c, "ls") == edited, (
+        "an edited pack sentence never reached the machine: the scan restored "
+        "the wording it had already stored")
+
+
+def test_rescan_retracts_a_withdrawn_entry(c, monkeypatch):
+    _rescan(c, monkeypatch, _pack_with_ls("list a folder"))
+    assert _when(c, "ls") == "list a folder"
+    _rescan(c, monkeypatch, [e for e in seed.SEED if e[0] != "ls"])
+    assert _when(c, "ls") == "", "a withdrawn pack entry left its wording behind"
+
+
+def test_rescan_keeps_hand_set_intent_on_custom_rows(c, monkeypatch):
+    upsert(c, "my-tool", "custom", "", "", "syncs the staging database")
+    c.execute("UPDATE tools SET when_to_use='ask me about staging' WHERE name='my-tool'")
+    c.commit()
+    _rescan(c, monkeypatch, seed.SEED)
+    assert _when(c, "my-tool") == "ask me about staging"

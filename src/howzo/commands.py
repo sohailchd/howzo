@@ -14,6 +14,31 @@ from .render import render_tool
 from .scan import scanners
 
 
+def preserve_edits(c, keep):
+    """Carry hand-made edits across a rescan.
+
+    help_excerpt: restored only for non-system tools. System tools get a fresh
+    man-derived excerpt every scan, so restoring the stale value would clobber
+    it (this is why old man artifacts survived rescans).
+
+    when_to_use: restored only for rows this repo did not index from the system,
+    because nothing user-facing writes that column. db.upsert has no such
+    parameter and 'howzo add' puts its description in oneliner, so the only
+    writer is the bundled pack, and the pack is re-applied at the end of every
+    scan. Restoring it for every row made bundled text indistinguishable from
+    user text: editing a pack entry never reached a machine that had already
+    scanned, and removing an entry left its wording behind permanently. A row
+    that is scanned fresh is empty here, which is what lets the pack refill it
+    with the current wording. 'howzo add' and npx rows keep their stored value,
+    which is the one place a hand-set intent sentence can legitimately live.
+    """
+    for name, (h, h_at, w) in keep.items():
+        c.execute("UPDATE tools SET when_to_use=? WHERE name=? AND source IN ('custom','npx')",
+                  (w, name))
+        c.execute("UPDATE tools SET help_excerpt=?, help_captured_at=? WHERE name=? AND source!='system'",
+                  (h, h_at, name))
+
+
 def cmd_scan(args):
     c = db()
     try:
@@ -50,17 +75,11 @@ def cmd_scan(args):
         c.execute("INSERT INTO tools(name, source, version, path, oneliner, when_to_use, help_excerpt, "
                   "help_captured_at, scanned_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(name) DO NOTHING",
                   (name, src, ver, path, one, w, h, h_at, time.strftime("%Y-%m-%d")))
-    for name, (h, h_at, w) in keep.items():
-        # when_to_use is user enrichment: always restore.
-        # help_excerpt: restore only for non-system tools. System tools get a
-        # fresh man-derived excerpt every scan, so restoring the stale value
-        # would clobber it (this is why old man artifacts survived rescans).
-        c.execute("UPDATE tools SET when_to_use=? WHERE name=?", (w, name))
-        c.execute("UPDATE tools SET help_excerpt=?, help_captured_at=?, when_to_use=? WHERE name=? AND source!='system'",
-                  (h, h_at, w, name))
+    preserve_edits(c, keep)
     # bundled seed knowledge base of top macOS/Linux/Windows commands: fills
     # empty when_to_use for what is installed, and indexes the rest as
-    # cross-platform references (never clobbers a user's own text)
+    # cross-platform references. It runs *after* preserve_edits so that a
+    # scanned row is still empty and the pack owns its intent wording.
     from .seed import apply_seed
     apply_seed(c)
     # the typo-corrector's vocab df cache was built from the pre-rescan

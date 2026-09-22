@@ -70,7 +70,7 @@
     "search",
     "show environment variables"
   ],
-  "recorded_with": "howzo 0.4.0",
+  "recorded_with": "howzo 0.4.1",
   "scorer": "per-concept best field, rarity-weighted (sqrt IDF); name tier exact",
   "seed_entries": 234
 }

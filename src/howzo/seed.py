@@ -17,9 +17,12 @@ Each entry is (name, platform, oneliner, when_to_use):
              on purpose: stuffing generic words ("file", "text") into many
              entries creates ranking collisions.
 
-Seed rows only fill gaps: a name that exists locally is never replaced, and a
-row's own when_to_use/oneliner is only filled when it is empty — a value you
-set yourself always wins.
+oneliners are never replaced. when_to_use works differently: the pack is its
+single source of truth, because nothing else writes that column ('howzo add'
+records its description in oneliner). A local row takes the pack's wording when
+its own is empty, and since every scan rebuilds rows empty, an edited sentence
+propagates to machines that already scanned and a removed entry is retracted.
+Rows from 'howzo add' and npx are exempt and keep whatever they stored.
 """
 import sys
 
@@ -532,16 +535,19 @@ def entry(name):
 
 
 def apply_seed(c, platform=None):
-    """Merge SEED into the inventory; never clobber a local row's own text.
+    """Merge SEED into the inventory; never clobber a local row's own oneliner.
 
-    A name that exists locally (source != 'seed') is left alone: the seed
-    only fills an empty when_to_use / empty oneliner, and only when the entry
-    is native to the running platform or marked 'all'. A local row that still
-    carries a platform tag (it was seeded before the tool got installed) is
-    cleared — a scanned row is native. Missing names are inserted as
-    source='seed' with their platform recorded; their text is curated, so
-    rescan re-syncs it from the bundled data (there is no user-facing editor
-    for seed rows). Local rows' own text is never touched.
+    A name that exists locally (source != 'seed') keeps its own oneliner: the
+    seed fills that only when it is empty, and only when the entry is native to
+    the running platform or marked 'all'. when_to_use is owned by the pack
+    (nothing else writes it) and is likewise filled when empty, which is what
+    lets an edited or withdrawn entry reach a machine on its next scan, since
+    cmd_scan rebuilds scanned rows empty and no longer restores that column.
+    A local row that still carries a platform tag (it was seeded before the
+    tool got installed) is cleared — a scanned row is native. Missing names are
+    inserted as source='seed' with their platform recorded; their text is
+    curated, so rescan re-syncs it from the bundled data (there is no
+    user-facing editor for seed rows).
 
     Returns the number of rows written (inserted + filled).
     """

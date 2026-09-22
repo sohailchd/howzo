@@ -1,6 +1,6 @@
 import pytest
 
-from howzo import commands
+from howzo import commands, seed
 from howzo.db import db, upsert
 
 
@@ -126,11 +126,17 @@ def test_scan_preserves_custom_rows_and_help(c, monkeypatch, capsys):
 
 
 def test_scan_system_excerpt_refreshed_not_stale(c, monkeypatch, capsys):
-    # keep-restore must not clobber a fresh man-derived system excerpt
-    # with the stale pre-rescan value (old artifacts surviving rescans)
+    # Two halves of one rule about what a rescan may carry forward.
+    # help_excerpt: a fresh man-derived excerpt must not be clobbered by the
+    # stale pre-rescan value (old artifacts surviving rescans).
+    # when_to_use: the opposite, because the bundled pack owns that column for
+    # scanned rows. Nothing user-facing writes it, so a stored value can only
+    # be older pack wording, and keeping it would freeze the machine on the
+    # sentence it first scanned. 'howzo add' and npx rows are the exception;
+    # tests/test_seed.py covers both directions.
     upsert(c, "ifconfig", "system", "", "/sbin/ifconfig", "old oneliner")
     c.execute("UPDATE tools SET help_excerpt='N\x08NA\x08AM\x08ME\x08E stale dirty excerpt', "
-              "when_to_use='for netconfig' WHERE name='ifconfig'")
+              "when_to_use='wording from an earlier pack' WHERE name='ifconfig'")
     c.commit()
 
     def fake_system(conn):
@@ -143,7 +149,7 @@ def test_scan_system_excerpt_refreshed_not_stale(c, monkeypatch, capsys):
     row = c.execute("SELECT * FROM tools WHERE name='ifconfig'").fetchone()
     assert row["help_excerpt"].startswith("NAME")
     assert "\x08" not in row["help_excerpt"]
-    assert row["when_to_use"] == "for netconfig"
+    assert row["when_to_use"] == seed.entry("ifconfig")[3]
 
 
 class TestMainDispatch:
