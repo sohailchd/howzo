@@ -1,32 +1,47 @@
 {
-  "cases": 42,
+  "cases": 45,
+  "categories": {
+    "archives": 1,
+    "compression": 2,
+    "disk": 4,
+    "files": 11,
+    "images": 1,
+    "json": 1,
+    "memory": 5,
+    "network": 2,
+    "ports": 2,
+    "processes": 4,
+    "search": 3,
+    "shell": 1,
+    "system-info": 1,
+    "text": 4
+  },
   "distractors": 6,
   "forbidden_answers": [
-    "cpu usage",
-    "how to check cpu temperature",
-    "how to see open ports",
+    "how to search inside files",
     "which port is open"
   ],
   "known_misses": [
-    "cpu usage",
-    "how to check cpu temperature",
     "how to search inside files",
-    "how to see open ports",
     "make directory",
     "which port is open"
   ],
   "passing": [
+    "check internet connection",
     "content of the file",
     "copy file to folder",
+    "cpu usage",
     "create a directory",
     "delete a file",
     "delete directory",
     "dir contents",
+    "directory creation",
     "disk usage",
     "fin file",
     "find macthing occurence in fike",
     "how much disk space is left",
     "how to archive a folder",
+    "how to check cpu temperature",
     "how to check disk space",
     "how to check memory usage",
     "how to compress a folder",
@@ -36,6 +51,7 @@
     "how to kill a process by name",
     "how to list running processes",
     "how to see disk usage by folder",
+    "how to see open ports",
     "how to see the first lines of a file",
     "how to sort a file",
     "how to unzip a file",
@@ -48,12 +64,13 @@
     "mem usahe",
     "memory usage",
     "port",
+    "print without newline",
     "ram usage",
     "rename a file",
     "search",
     "show environment variables"
   ],
   "recorded_with": "howzo 0.4.0",
-  "scorer": "field tiers, additive across fields, unweighted tokens (0.3.1)",
-  "seed_entries": 233
+  "scorer": "per-concept best field, rarity-weighted (sqrt IDF); name tier exact",
+  "seed_entries": 234
 }

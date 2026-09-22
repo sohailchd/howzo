@@ -35,6 +35,7 @@ def main():
     c.commit()
 
     passing, failing, forbidden = [], [], []
+    counts = {}
     for case in CASES:
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -47,16 +48,18 @@ def main():
                 forbidden.append(case.query)
         else:
             passing.append(case.query)
+            counts[case.category] = counts.get(case.category, 0) + 1
         print("%-38s %-10s %s" % (case.query, "pass" if not reason else "MISS",
                                   " ".join(names) or "(nothing)"))
 
     baseline = {
         "recorded_with": "howzo %s" % __version__,
-        "scorer": "field tiers, additive across fields, unweighted tokens (0.3.1)",
+        "scorer": "per-concept best field, rarity-weighted (sqrt IDF); name tier exact",
         "cases": len(CASES),
         "seed_entries": len(seed.SEED),
         "distractors": len(DISTRACTORS),
         "passing": sorted(passing),
+        "categories": counts,
         "known_misses": sorted(failing),
         "forbidden_answers": sorted(forbidden),
     }

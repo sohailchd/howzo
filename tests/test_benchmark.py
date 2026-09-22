@@ -71,8 +71,6 @@ CASES = [
     # ---- memory / cpu (the reported class) ------------------------------
     Case("cpu usage", "processes", ok_top1={"top", "ps", "htop"},
          need_any_topk={"top", "ps", "htop"}, forbid_topk={"du", "iftop"},
-         expected_fail="in this small corpus iftop's bandwidth text still takes a slot "
-                       "(live, cpu usage answers top/ps/htop); du is already gone",
          note="the miss that started this rebuild: du repeated a generic word across three fields and won"),
     Case("mem usage", "memory", ok_top1={"top", "ps", "htop", "memory_pressure", "vm_stat"},
          need_any_topk={"top", "ps", "htop", "memory_pressure", "vm_stat"},
@@ -88,7 +86,7 @@ CASES = [
          need_topk={"top"}, forbid_topk={"du"}),
     Case("how to check cpu temperature", "system-info", ok_top1={"top", "htop", "pmset", "sysctl"},
          need_topk={"top"}, forbid_topk={"shasum", "checkgid"},
-         expected_fail="today answers shasum/checkgid: 'check' and 'cpu' matched obscure tool names first"),
+         note="was answers shasum/checkgid: 'check' and 'cpu' matched obscure tool names first"),
 
     # ---- disk ------------------------------------------------------------
     Case("disk usage", "disk", ok_top1={"du", "df"}, need_topk={"du"}),
@@ -123,6 +121,9 @@ CASES = [
                        "mkdir is #2. Needs the intent-group layer ('create a directory'), not a name hack"),
     Case("create a directory", "files", ok_top1={"mkdir"}, need_topk={"mkdir"},
          note="passes: no tool is named 'create', so the verb cannot steal the tier"),
+    Case("directory creation", "files", ok_top1={"mkdir"}, need_topk={"mkdir"},
+         note="the same intent under a noun: 'creation' has to reach mkdir's 'create a new "
+              "folder or directory' through the suffix, not the prefix"),
 
     # ---- the front door: a bare word must not resolve by prefix ----------
     Case("search", "search", ok_top1={"grep", "rg", "find"}, forbid_topk={"searchdiagnose"}),
@@ -135,9 +136,16 @@ CASES = [
     Case("how to list running processes", "processes", ok_top1={"ps", "top"}, need_topk={"ps"}),
 
     # ---- network ---------------------------------------------------------
+    Case("check internet connection", "network",
+         ok_top1={"networkQuality", "ping", "nc", "curl", "dig", "traceroute", "mtr"},
+         need_any_topk={"networkQuality", "ping", "nc", "curl", "mtr", "netstat"},
+         forbid_topk={"shasum", "md5", "md5sum", "df", "cmp", "uptime", "free"},
+         note="reported live: 'check' is a verb every tool's prose uses ('verify an integrity "
+              "checksum'), and it dragged in shasum/checkgid. The query's content words are "
+              "internet/connection, and rarity weighting is what lets them win"),
     Case("how to see open ports", "ports", ok_top1={"lsof", "netstat", "nc", "ss"},
          need_topk={"lsof", "netstat"}, forbid_topk={"open"},
-         expected_fail="'open' is a file-opening tool on macOS; 'open ports' is not about it"),
+         note="'open' is a file-opening tool on macOS; 'open ports' is not about it"),
     Case("which port is open", "ports", ok_top1={"lsof", "netstat", "nc", "ss"},
          forbid_topk={"open"},
          expected_fail="'open' (which opens files) answers 'open ports' today"),
@@ -149,6 +157,9 @@ CASES = [
     Case("how to archive a folder", "archives", ok_top1={"tar", "zip"}, need_topk={"tar"}),
     Case("how to convert an image to pdf", "images", ok_top1={"sips", "convert"}, need_topk={"sips"}),
     Case("show environment variables", "shell", ok_top1={"env", "printenv", "export"}, need_topk={"env"}),
+    Case("print without newline", "text", ok_top1={"printf"}, need_topk={"printf"},
+         note="reported live: answered npx ('run a node package without installing it') - the "
+              "query's subject was print/newline, and 'without' has to stop being a topic"),
 
     # ---- typos and fragments --------------------------------------------
     Case("fin file", "search", ok_top1={"find"}, need_topk={"find"},
@@ -158,7 +169,8 @@ CASES = [
          forbid_topk={"du", "iftop", "df"},
          note="a typo must not change which tools the generic word drags in"),
     Case("find macthing occurence in fike", "search", ok_top1={"find", "grep"},
-         need_topk={"find", "grep"}),
+         need_topk={"find", "grep"},
+         note="typos AND a fragment: 'fike' -> file, 'occurence' -> occurrence"),
     Case("how to view a json file", "json", ok_top1={"jq"}, need_topk={"jq"}),
 ]
 
@@ -237,9 +249,11 @@ def test_scoreboard(bench, capsys):
     known = {c.query for c in CASES if c.expected_fail}
     print("\nbenchmark: %d/%d passing, %d known misses, %d forbidden answers"
           % (len(passing), len(CASES), len(failing), len(forbid_violations)))
+    counts = {}
     for cat in sorted({c.category for c in CASES}):
         total = [c for c in CASES if c.category == cat]
         ok = [c for c in total if c.query in passing]
+        counts[cat] = len(ok)
         print("  %-12s %d/%d" % (cat, len(ok), len(total)))
 
     regressed = [q for q in baseline["passing"] if q in failing]
@@ -247,3 +261,9 @@ def test_scoreboard(bench, capsys):
     assert set(failing) == known, (
         "known misses changed: now failing %s, recorded %s — fix it or update the "
         "baseline deliberately" % (sorted(set(failing) - known), sorted(known - set(failing))))
+    # Gated, not just printed: an aggregate score hides one category going
+    # backwards while another improves.
+    for cat, was in baseline["categories"].items():
+        assert counts.get(cat, 0) >= was, (
+            "category %r went backwards: %d/%d passing, %d when the baseline was recorded"
+            % (cat, counts.get(cat, 0), len([c for c in CASES if c.category == cat]), was))

@@ -112,6 +112,8 @@ SEED = [
      "open a document, folder, or url in its app (macOS)"),
     ("echo", ALL, "write arguments to the standard output",
      "print text or the value of a variable"),
+    ("printf", ALL, "format and print data",
+     "print text without a trailing newline, format and print data"),
     ("env", ALL, "set the environment for a command, or print it",
      "show or set environment variables for a command"),
     ("printenv", ALL, "print out the environment",

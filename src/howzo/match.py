@@ -3,6 +3,7 @@
 Match = FTS5 BM25 + a word-boundary token-coverage re-rank in Python,
 so 'kill' never matches 'skill' and 'port' never matches 'report'.
 """
+import math
 import os
 import re
 import sqlite3
@@ -14,7 +15,12 @@ STOP = {"a", "am", "an", "and", "are", "as", "at", "by", "can", "do", "does",
         "it", "me", "much", "my", "need", "of", "on", "or", "per", "please",
         "show", "showing", "shows", "tell", "that", "the", "there", "to", "up",
         "use", "using", "want", "was", "were", "what", "whats", "which",
-        "with", "you", "your", "across"}
+        "with", "you", "your", "across",
+        # prepositions that are not topics. 'print without newline' answered
+        # npx, whose intent phrase is "run a node package without installing
+        # it": the query's subject was 'print'/'newline', and 'without' only
+        # ever appeared in other tools' prose.
+        "about", "after", "before", "between", "within", "without"}
 
 
 def query_tokens(q):
@@ -31,6 +37,27 @@ def fts_query(q):
     return " OR ".join('"%s"' % t for t in toks)
 
 
+# Suffixes a query word may wear while its manual uses the bare root:
+# 'creation'/'create', 'compression'/'compress', 'installation'/'install'.
+# Only derivational suffixes are listed. Plurals are already covered by the
+# prefix rule ('file'/'files', 'user'/'users'), and stripping them here would
+# blur words the prefix rule keeps apart: 'directory' would match the plural
+# 'directories' in mkdir's one-liner "make directories", handing the tool that
+# CREATES directories the same evidence as the one that lists them.
+# Stripping is only allowed to leave four characters: 'sion' off 'vision'
+# leaves 'vis', which is nobody's root.
+_SUFFIXES = ("ations", "ation", "itions", "ition", "tions", "tion",
+             "sions", "sion", "ings", "ing", "ion", "ment", "ness", "ity")
+
+
+def _root(word):
+    """The word minus one common suffix, or the word itself."""
+    for s in _SUFFIXES:
+        if word.endswith(s) and len(word) - len(s) >= 4:
+            return word[:-len(s)]
+    return word
+
+
 def _tok_in(tok, words):
     """Prefix-stemmed containment: 'match'~'matching', 'find'~'finds',
     'file'~'filenames'. Bidirectional so a corrected longer token still
@@ -38,11 +65,22 @@ def _tok_in(tok, words):
     'kill' is not in 'skill', 'port' not in 'report'. A short query token
     (len < 4) only counts as an exact match: 'ip' must not hit 'ip2cc'
     and 'pdf' must not hit 'pdftohtml' — format/abbreviation words are
-    not stems of those names."""
+    not stems of those names.
+
+    A suffix the prefix rule cannot see past is compared on its root:
+    mkdir's intent phrase says "create a new folder or directory", and
+    'creation' does not start with 'create' (they part at the sixth letter),
+    so "directory creation" answered ls - a directory tool - instead of
+    mkdir, the one that creates them."""
     for w in words:
         if w == tok or (len(tok) >= 4 and w.startswith(tok)) \
                 or (len(w) >= 3 and tok.startswith(w)):
             return True
+        if len(tok) >= 4 and len(w) >= 4:
+            rt, rw = _root(tok), _root(w)
+            if rt == rw or (len(rt) >= 4 and rw.startswith(rt)) \
+                    or (len(rw) >= 4 and rt.startswith(rw)):
+                return True
     return False
 
 
@@ -109,6 +147,60 @@ def _vocab(c):
         v = {r[0]: r[1] for r in c.execute("SELECT word, df FROM vocab")}
         _vocab_cache[key] = v
     return v
+
+
+def token_weights(c, toks):
+    """Rarity weight per query concept: sqrt(log(1 + N / (1 + family_df))).
+
+    Weighting is what stops a generic word from outvoting a specific one. For
+    "cpu usage", 'usage' sits in 196 rows and 'cpu' in 33; unweighted, du (which
+    says "disk usage" in three fields) outranks htop, which matches 'cpu' once.
+    The frequency counted is the token's whole stem family, because that is what
+    the matcher can actually reach.
+
+    The square root damps the ratio: an IDF alone ranges over ~7x on a real
+    install, which is enough for one rare word to outvote the rest of the query
+    ('matching' outvoted a name claim on 'find' for "find matching occurrence in
+    file"). Damped, rarity still separates 'cpu' from 'usage' - the fix that put
+    htop back in the answer - but no single word dominates the question.
+    """
+    v = _vocab(c)
+    n = c.execute("SELECT count(*) FROM tools").fetchone()[0] or 1
+    out = {}
+    for t in toks:
+        df = sum(d for w, d in v.items()
+                 if w == t or (len(t) >= 4 and w.startswith(t)))
+        out[t] = math.sqrt(math.log(1.0 + n / (1.0 + df)))
+    return out
+
+
+def _name_in_forms(tok, name, alias):
+    """A tool is claimed by its own name or a curated alias - never by a word
+    that merely starts the same way ('search' is not 'searchdiagnose')."""
+    return tok == name or (alias is not None and tok == alias)
+
+
+def concept_groups(typed, resolved):
+    """Map each resolved concept to every surface form standing for it.
+
+    'dir contents' resolves dir -> directory, so the query holds two concepts
+    (directory, contents) and not three tokens. Counting the fragment and its
+    expansion separately hands a tool that matches only the long form the same
+    weight of evidence as one that matches the whole intent ('contents' is rarer
+    than 'directory', so unzip outranked ls for 'dir contents').
+
+    A misspelling is not a second surface form: 'macthing' is one edit from the
+    word the user meant ('matching'), and keeping the typo as a form lets its
+    letters match prose by accident - the typo 'macthing' starts with 'mac', so
+    ifconfig ("mac address") answered "find macthing occurence in fike". An
+    abbreviation is not a typo ('dir' -> 'directory' is six edits), so both
+    spellings stay matchable."""
+    groups = {}
+    for orig, canon in zip(typed, resolved):
+        forms = groups.setdefault(canon, {canon})
+        if orig != canon and _lev(orig, canon, 1) > 1:
+            forms.add(orig)
+    return groups
 
 
 def expand_tokens(c, toks, cap=1):
@@ -223,13 +315,25 @@ def name_hits(c, toks):
                      % ",".join("?" * len(ids)), sorted(ids)).fetchall()
 
 
+def _norm_name(s):
+    """A tool name with its separators removed.
+
+    Build managers spell the version separator differently from the way people
+    type it: Homebrew installs 'python@3.13' and 'openssl@3', the compiler
+    toolchain installs 'gcc-15'. Removing '@', '-', '_' from both sides makes
+    the typed 'python3' / 'openssl' / 'gcc' line up with the installed name."""
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
 def find_by_name(c, q):
     """Exact (case-insensitive) name lookup, plus the two cases where typing
     less than the installed name is legitimate:
 
       - Windows stores .exe-suffixed names, so 'python' must find 'python.exe'
       - build managers install versioned binaries, so 'python' must find
-        'python3.13' and 'findrule' must find 'findrule5.34'
+        'python3.13' and 'findrule' must find 'findrule5.34'. The separator is
+        not the user's problem: 'gcc' finds 'gcc-15' and 'icu4c' finds
+        'icu4c@76'.
 
     Anything else that merely starts with the query is a different tool:
     'search' is not 'searchdiagnose' and 'port' is not 'portaudio'. This runs
@@ -243,12 +347,17 @@ def find_by_name(c, q):
                     % ",".join("?" * len(names)), names).fetchone()
     if row:
         return row
-    for n in names:
-        pattern = re.compile(re.escape(n) + r"[0-9.]+\Z")
-        for r in c.execute("SELECT * FROM tools WHERE lower(name) LIKE ?"
-                           " ORDER BY name", (n + "%",)):
-            if pattern.match((r["name"] or "").lower()):
-                return r
+    # Versioned binary: the query must be the name's whole stem, with only the
+    # version left over ('sha' -> 'sha1', 'python3' -> 'python@3.11') — not a
+    # prefix of a longer word ('search' must not reach 'searchdiagnose').
+    stem = _norm_name(q)
+    if len(stem) < 2:
+        return None
+    pattern = re.compile(re.escape(stem) + r"[0-9.]+\Z")
+    for r in c.execute("SELECT * FROM tools WHERE lower(name) LIKE ?"
+                       " ORDER BY name", (stem[:2] + "%",)):
+        if pattern.match(_norm_name(r["name"])):
+            return r
     return None
 
 
@@ -309,7 +418,7 @@ def _fragment_word(v, tok, n_docs):
     return w if v.get(tok, 0) * FRAGMENT_RATIO < d else None
 
 
-def rank_rows(rows, toks, platform=None, name_toks=None):
+def rank_rows(rows, toks, platform=None, name_toks=None, weights=None, groups=None):
     """Re-rank candidates by field tier: intent fields beat description.
 
     Four tiers, each normalized by the number of query tokens:
@@ -323,9 +432,24 @@ def rank_rows(rows, toks, platform=None, name_toks=None):
       0.5  help_excerpt         — scraped man text; long pages mention
            many query words by accident and must not win on volume
     Without normalization a long doc that merely mentions more query
-    words would always outscore the right tool. Ties break on the FTS5
-    bm25 score (more negative = denser match), then name. Rows without
-    a score (LIKE fallback) tie at 0.
+    words would always outscore the right tool.
+
+    With weights + groups (what cmd_ask passes), each query *concept*
+    contributes once, through the best field it is found in, scaled by how rare
+    that concept is in this index:
+        score = sum_c( weight(c) * best_field(c) ) / sum_c( weight(c) )
+    so 'cpu' outweighs 'usage', and du's repetition of the generic 'usage'
+    across three fields stops being an advantage (it took htop's slot). A
+    concept found in more than one field adds no score, but it is more
+    evidence, so it breaks ties (a row saying "directory" in both its intent
+    phrase and its description is a directory tool; one mentioning it once is
+    not).
+    Without weights + groups the older additive-across-fields score is used
+    unchanged.
+
+    Ties break on evidence breadth (see above), then the FTS5 bm25 score (more
+    negative = denser match), then name. Rows without a score (LIKE fallback)
+    tie at 0.
 
     name_toks (default: toks) are the words the user meant — what they typed
     plus the spelling a typo was corrected to (expand_tokens returns them) —
@@ -346,6 +470,10 @@ def rank_rows(rows, toks, platform=None, name_toks=None):
     n = len(toks) or 1
     typed = toks if name_toks is None else name_toks
     cur = platform or config.platform_name()
+    if groups:
+        wsum = sum((weights or {}).get(c, 1.0) for c in groups) or 1.0
+    else:
+        wsum = 0.0
 
     def rank_key(r):
         try:
@@ -369,10 +497,35 @@ def rank_rows(rows, toks, platform=None, name_toks=None):
         # answered searchdiagnose, 'check' answered checkgid and 'memory'
         # answered memory_pressure. With them gone, the curated data has to say
         # what those tools are for (see howzo/seed.py).
+        when_w = re.findall(r"[a-z0-9]+", when)
+        one_w = re.findall(r"[a-z0-9]+", oneliner)
+        exc_w = re.findall(r"[a-z0-9]+", excerpt)
+        if groups:
+            score = 0.0
+            strength = 0
+            for canon, forms in groups.items():
+                best = 0.0
+                if any(f in typed and _name_in_forms(f, name, alias) for f in forms):
+                    best = 3.0
+                    strength += 1
+                # the excerpt tier is deliberately small here: a long man page
+                # mentions incidental words, and a single accidental hit on a
+                # rare word was enough to flip a query (unzip's man page says
+                # "directory", which put it above ls for "dir contents"). It
+                # breaks ties rather than decides, and does not count as
+                # evidence breadth (a man page is not curated intent).
+                for words, wt in ((when_w, 2.0), (one_w, 1.0), (exc_w, 0.2)):
+                    if any(_tok_in(f, words) for f in forms):
+                        if wt > best:
+                            best = wt
+                        if wt > 0.5:
+                            strength += 1
+                score += (weights or {}).get(canon, 1.0) * best
+            return (group, -score / wsum, -strength, s, r["name"])
         n_cov = sum(1 for t in typed if t == name or (alias and t == alias))
-        w_cov = sum(1 for t in toks if _tok_in(t, re.findall(r"[a-z0-9]+", when)))
-        o_cov = sum(1 for t in toks if _tok_in(t, re.findall(r"[a-z0-9]+", oneliner)))
-        e_cov = sum(1 for t in toks if _tok_in(t, re.findall(r"[a-z0-9]+", excerpt)))
+        w_cov = sum(1 for t in toks if _tok_in(t, when_w))
+        o_cov = sum(1 for t in toks if _tok_in(t, one_w))
+        e_cov = sum(1 for t in toks if _tok_in(t, exc_w))
         tier = 3.0 * n_cov / n + 2.0 * w_cov / n + 1.0 * o_cov / n + 0.5 * e_cov / n
         return (group, -tier, s, r["name"])
     return sorted(rows, key=rank_key)

@@ -6,8 +6,9 @@ import time
 from . import config
 from .db import db, upsert
 from .helptext import capture_help
-from .match import (clear_vocab_cache, coverage, expand_tokens, fts_query,
-                    find_by_name, has_word, name_hits, query_tokens, rank_rows)
+from .match import (clear_vocab_cache, concept_groups, coverage, expand_tokens,
+                    fts_query, find_by_name, has_word, name_hits, query_tokens,
+                    rank_rows, token_weights)
 from . import proc
 from .render import render_tool
 from .scan import scanners
@@ -142,8 +143,11 @@ def cmd_ask(args):
                 if has_word(hay, t):
                     cand[r["id"]] = r
         rows = list(cand.values())
-    # only the user's own words earn the name tier (see rank_rows)
-    rows = rank_rows(rows, toks, name_toks=name_toks)
+    # the user's own words earn the name tier; each query concept contributes
+    # once, weighted by how rare it is in this index (see rank_rows)
+    rows = rank_rows(rows, toks, name_toks=name_toks,
+                     weights=token_weights(c, resolved),
+                     groups=concept_groups(typed, resolved))
     if not rows:
         print(f"no match for: {q}\n  (try 'howzo scan --deep' to index --help text)")
         return 1
