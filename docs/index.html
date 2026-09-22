@@ -3,8 +3,80 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>howzo — knows your machine</title>
-<meta name="description" content="howzo is a free, local, zero-model command router. Ask 'how do I X' in English and get the tool that's actually installed on your machine.">
+<title>howzo — ask in English, get the CLI tool that's installed on your machine</title>
+<meta name="description" content="howzo indexes the tools already on your Mac, Linux or Windows machine — brew, npm, pipx, uv, system binaries, your own scripts — and answers “how do I…?” in plain English. Free, offline, no models, no API keys, no telemetry.">
+<meta name="keywords" content="how do i command line, which command do i need, find the right cli tool, terminal command search, macos terminal commands, linux command line help, windows command prompt, shell command finder, offline cli search, brew, npm, pipx, uv, zero model, local, no api key">
+<meta name="author" content="Rayan">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+<link rel="canonical" href="https://sohailchd.github.io/howzo/">
+<meta name="theme-color" content="#F4F3F0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15151A" media="(prefers-color-scheme: dark)">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="howzo">
+<meta property="og:title" content="howzo — the tool you need is already on your machine">
+<meta property="og:description" content="Ask “how do I X” in English and get the CLI tool that is actually installed. Offline, zero models, standard library only.">
+<meta property="og:url" content="https://sohailchd.github.io/howzo/">
+<meta property="og:image" content="https://sohailchd.github.io/howzo/og.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="howzo — Knows your machine. Ask “how do I X” in English and get the tool that is actually installed.">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="howzo — the tool you need is already on your machine">
+<meta name="twitter:description" content="Ask “how do I X” in English and get the CLI tool that is actually installed. Offline, zero models, standard library only.">
+<meta name="twitter:image" content="https://sohailchd.github.io/howzo/og.png">
+<meta name="twitter:image:alt" content="howzo — Knows your machine.">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://sohailchd.github.io/howzo/#website",
+      "url": "https://sohailchd.github.io/howzo/",
+      "name": "howzo",
+      "description": "A free, local, zero-model command router: ask “how do I X” in English and get the tool that is actually installed on your machine.",
+      "inLanguage": "en",
+      "publisher": {
+        "@id": "https://sohailchd.github.io/howzo/#app"
+      }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://sohailchd.github.io/howzo/#app",
+      "name": "howzo",
+      "url": "https://sohailchd.github.io/howzo/",
+      "description": "howzo indexes the tools already installed on a Mac, Linux or Windows machine — brew, npm, pipx, uv, system binaries and your own scripts — and answers plain-English questions about them offline. No models, no API keys, no telemetry.",
+      "applicationCategory": "DeveloperApplication",
+      "applicationSubCategory": "Command line tool",
+      "operatingSystem": "macOS, Linux, Windows",
+      "softwareVersion": "0.3.1",
+      "softwareRequirements": "Python 3.9 or newer; zero runtime dependencies",
+      "isAccessibleForFree": true,
+      "license": "https://opensource.org/license/mit",
+      "programmingLanguage": "Python",
+      "downloadUrl": "https://pypi.org/project/howzo/",
+      "installUrl": "https://pypi.org/project/howzo/",
+      "codeRepository": "https://github.com/sohailchd/howzo",
+      "author": {
+        "@type": "Person",
+        "name": "Rayan"
+      },
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "sameAs": [
+        "https://pypi.org/project/howzo/",
+        "https://github.com/sohailchd/howzo"
+      ],
+      "keywords": "command line, cli, shell, terminal, command search, developer tools, offline, macos, linux, windows, brew, npm, pipx, uv, zero model"
+    }
+  ]
+}
+</script>
 <style>
   :root {
     --bg: #0b0e0d;
@@ -129,7 +201,6 @@
   .demo-tab:hover { color: var(--text); border-color: var(--dim); }
   .demo-tab:active { transform: translateY(1px); }
   .demo-tab.active { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
-  .term-note { margin-top: 10px; font-size: 12px; color: var(--dimmer); }
 
   /* ---------- sections ---------- */
   .section { padding: 56px 0; border-top: 1px solid var(--line-soft); }
@@ -253,7 +324,6 @@
     </div>
 
     <div class="demo-tabs" id="demoTabs"></div>
-    <p class="term-note">Recorded from a real install — 1,219 tools indexed. Install it and your machine writes the show.</p>
   </section>
 
   <section class="section" id="how">
@@ -366,7 +436,7 @@
     });
   });
 
-  /* ---- recorded demo sessions (real output from a 1,219-tool install) ---- */
+  /* ---- recorded demo sessions (representative output) ---- */
   /* One entry per visual line. {tool, meta} renders "name  (source)" on one line. */
   var SESSIONS = [
     {

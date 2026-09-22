@@ -1,0 +1,8 @@
+# howzo — https://sohailchd.github.io/howzo/
+# This file is only honoured when served from a host root; on a *.github.io
+# project page the authoritative controls are the robots meta tag in the page
+# and the sitemap submitted in Google Search Console.
+User-agent: *
+Allow: /
+
+Sitemap: https://sohailchd.github.io/howzo/sitemap.xml
