@@ -4,28 +4,21 @@
     "archives": 1,
     "compression": 2,
     "disk": 4,
-    "files": 11,
+    "files": 12,
     "images": 1,
     "json": 1,
     "memory": 5,
     "network": 2,
-    "ports": 2,
+    "ports": 3,
     "processes": 4,
-    "search": 3,
+    "search": 4,
     "shell": 1,
     "system-info": 1,
     "text": 4
   },
   "distractors": 6,
-  "forbidden_answers": [
-    "how to search inside files",
-    "which port is open"
-  ],
-  "known_misses": [
-    "how to search inside files",
-    "make directory",
-    "which port is open"
-  ],
+  "forbidden_answers": [],
+  "known_misses": [],
   "passing": [
     "check internet connection",
     "content of the file",
@@ -50,6 +43,7 @@
     "how to find ip address",
     "how to kill a process by name",
     "how to list running processes",
+    "how to search inside files",
     "how to see disk usage by folder",
     "how to see open ports",
     "how to see the first lines of a file",
@@ -60,6 +54,7 @@
     "list directory",
     "list files",
     "list files in a directory",
+    "make directory",
     "mem usage",
     "mem usahe",
     "memory usage",
@@ -68,7 +63,8 @@
     "ram usage",
     "rename a file",
     "search",
-    "show environment variables"
+    "show environment variables",
+    "which port is open"
   ],
   "recorded_with": "howzo 0.4.1",
   "scorer": "per-concept best field, rarity-weighted (sqrt IDF); name tier exact",

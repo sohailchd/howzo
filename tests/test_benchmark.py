@@ -107,18 +107,20 @@ CASES = [
     Case("how to sort a file", "text", ok_top1={"sort"}, need_topk={"sort"}),
     Case("how to search inside files", "search", ok_top1={"grep", "rg", "ack"},
          need_topk={"grep"}, forbid_topk={"searchdiagnose", "mdfind"},
-         expected_fail="searchdiagnose is gone (name prefixes no longer claim anything); "
-                       "'find' still outranks grep for searching INSIDE files - that is field-tier "
-                       "scoring, next milestone",
-         note="a name that merely prefixes a common word must not win"),
+         note="was a known miss: 'find' won because grep's intent text never said "
+              "'inside'. It says it now, and 'match' stayed in the sentence - dropping "
+              "that word was what pushed grep out of 'find macthing occurence in fike'. "
+              "mdfind is forbidden because Spotlight answers by index, not by reading "
+              "the file the way grep does"),
 
     # ---- name eligibility (a typed noun is not a name claim) -------------
     Case("delete directory", "files", ok_top1={"rm", "rmdir"}, need_topk={"rmdir"},
          forbid_topk={"mkdir"}),
     Case("list directory", "files", ok_top1={"ls"}, need_topk={"ls"}),
     Case("make directory", "files", ok_top1={"mkdir"}, need_topk={"mkdir"},
-         expected_fail="the tool 'make' shares the query's verb and takes the name tier; "
-                       "mkdir is #2. Needs the intent-group layer ('create a directory'), not a name hack"),
+         note="was a known miss: the tool 'make' took the name tier on the query's verb. "
+              "mkdir's intent now carries 'make' too, so it matches both concepts and "
+              "outranks the name claim - no scorer change was needed"),
     Case("create a directory", "files", ok_top1={"mkdir"}, need_topk={"mkdir"},
          note="passes: no tool is named 'create', so the verb cannot steal the tier"),
     Case("directory creation", "files", ok_top1={"mkdir"}, need_topk={"mkdir"},
@@ -148,7 +150,10 @@ CASES = [
          note="'open' is a file-opening tool on macOS; 'open ports' is not about it"),
     Case("which port is open", "ports", ok_top1={"lsof", "netstat", "nc", "ss"},
          forbid_topk={"open"},
-         expected_fail="'open' (which opens files) answers 'open ports' today"),
+         note="was a known miss: netstat was already first, and 'open' (the file opener) "
+              "took the third slot on the verb. lsof's intent now says 'open ports', so it "
+              "matches both concepts and 'open' is gone - a forbid violation, not a "
+              "missing correct answer, which is why forbidden answers have their own gate"),
     Case("how to find ip address", "network", ok_top1={"ifconfig", "ip"}, need_topk={"ifconfig"}),
 
     # ---- archives / images / env ----------------------------------------
