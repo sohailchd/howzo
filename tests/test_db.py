@@ -99,3 +99,32 @@ def test_locked_db_is_not_deleted(tmp_path, monkeypatch, capsys):
     assert "corrupted" not in capsys.readouterr().out
     second.close()
     first.close()
+
+
+def test_howzo_db_accepts_a_directory(tmp_path, monkeypatch):
+    """README documents HOWZO_DB as the directory holding the index."""
+    from howzo import config
+    from howzo.db import db
+    d = tmp_path / "howzo-data"
+    d.mkdir()
+    monkeypatch.setenv("HOWZO_DB", str(d))
+    assert config.db_path() == str(d / "howzo.db")
+    assert config.db_dir() == str(d)
+    c = db()
+    c.execute("SELECT count(*) FROM tools")
+    c.close()
+    assert (d / "howzo.db").exists()
+
+
+def test_howzo_db_accepts_a_file(tmp_path, monkeypatch):
+    """The test suite points it at a file; that must keep working."""
+    from howzo import config
+    from howzo.db import db
+    f = tmp_path / "custom.db"
+    monkeypatch.setenv("HOWZO_DB", str(f))
+    assert config.db_path() == str(f)
+    assert config.db_dir() == str(tmp_path)
+    c = db()
+    c.execute("SELECT count(*) FROM tools")
+    c.close()
+    assert f.exists()

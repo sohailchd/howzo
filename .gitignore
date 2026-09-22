@@ -13,6 +13,9 @@ venv/
 # local machine config (paths are per-user; see README for setup)
 .mcp.json
 
+# local scratch: benchmark/A-B scripts and their temp DB copies
+.bench/
+
 # environment & secrets (never commit)
 .env
 .env.*

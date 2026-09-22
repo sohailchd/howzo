@@ -99,10 +99,10 @@ A typical machine indexes ~1,500 tools. Seed rows are reference entries for tool
 ## How it works
 
 - **SQLite + FTS5** at `~/.local/share/howzo/howzo.db` (Windows: `%LOCALAPPDATA%\howzo`), one row per tool: name, source, version, oneliner, when-to-use, help excerpt.
-- **Match = BM25 + word-boundary token-coverage re-rank** in Python, tiered by field (name > when-to-use > oneliner > man excerpt) with typo tolerance (Damerau-Levenshtein against the index vocabulary). No models, no embeddings — `kill` never matches `skill`, `port` never matches `report`.
+- **Match = BM25 + word-boundary token-coverage re-rank** in Python, tiered by field (name > when-to-use > oneliner > man excerpt). Short words resolve to the ones the manuals use: a 3-letter word that is much rarer in your index than the word it starts expands to that word (`mem` → memory, `dir` → directory, `man` → manual), and a tiny synonym map covers names that share no spelling (`ram` → memory). Typos are corrected with Damerau-Levenshtein against the index vocabulary. No models, no embeddings — `kill` never matches `skill`, `port` never matches `report`, `pdf` never matches `pdftohtml`.
 - **Curated seed layer**: man pages under-describe what tools are *for* (`cat`'s page says "concatenate files", so "content of the file" could never reach it). howzo bundles ~230 hand-written "when to use" entries for the top macOS/Linux/Windows commands and merges them in at scan time — filling gaps only, never overwriting your machine's real data.
 - **~20–30 MB RAM**, and answering is fully offline. The network is only touched while scanning, to fetch package descriptions from npm/PyPI.
-- Set `HOWZO_DB=/some/dir` to relocate the database (also how the test suite isolates itself).
+- Set `HOWZO_DB` to a directory or to a full path to relocate the database (the test suite points it at a temp file).
 
 ## MCP
 

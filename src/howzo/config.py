@@ -25,7 +25,10 @@ SCAN_DIRS = [os.path.join(HOME, "bin"), os.path.join(HOME, ".local", "bin")]
 def db_dir():
     override = os.environ.get("HOWZO_DB")
     if override:
-        return os.path.dirname(os.path.abspath(override))
+        # a directory override holds howzo.db (see db_path); a file override
+        # lives in its parent. The corruption-rebuild path deletes *this*
+        # directory's howzo.db files, so resolving to the wrong one matters.
+        return override if os.path.isdir(override) else os.path.dirname(os.path.abspath(override))
     if IS_WINDOWS:
         return os.path.join(os.environ.get("LOCALAPPDATA") or HOME, "howzo")
     return os.path.join(HOME, ".local", "share", "howzo")
@@ -34,5 +37,6 @@ def db_dir():
 def db_path():
     override = os.environ.get("HOWZO_DB")
     if override:
-        return override
+        # documented as either the DB file or the directory holding it
+        return os.path.join(override, "howzo.db") if os.path.isdir(override) else override
     return os.path.join(db_dir(), "howzo.db")

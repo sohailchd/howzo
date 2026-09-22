@@ -97,9 +97,9 @@ def cmd_ask(args):
     if row:
         print(render_tool(row, q))
         return 0
-    toks = query_tokens(q)
+    typed = query_tokens(q)
     # spell-correct tokens that have no exact match in the index vocabulary
-    toks, fts_toks, resolved = expand_tokens(c, toks) if toks else ([], [], [])
+    toks, fts_toks, resolved, name_toks = expand_tokens(c, typed) if typed else ([], [], [], [])
     ftsq = " OR ".join('"%s"' % t for t in fts_toks)
     rows = []
     try:
@@ -142,7 +142,8 @@ def cmd_ask(args):
                 if has_word(hay, t):
                     cand[r["id"]] = r
         rows = list(cand.values())
-    rows = rank_rows(rows, toks)
+    # only the user's own words earn the name tier (see rank_rows)
+    rows = rank_rows(rows, toks, name_toks=name_toks)
     if not rows:
         print(f"no match for: {q}\n  (try 'howzo scan --deep' to index --help text)")
         return 1

@@ -113,6 +113,17 @@ CASES = [
     ("rename a file", "mv", {"mv"}),
     ("delete a file", "rm", {"rm"}),
     ("list files in a directory", "ls", {"ls"}),
+    # abbreviations/synonyms: 'mem' stems to the prose that spells 'memory',
+    # and 'ram' expands to it. Without both, du (prose full of the generic
+    # word 'usage') takes the memory slots instead of the memory tools.
+    ("mem usage", None, {"top", "ps"}),
+    ("ram usage", None, {"top", "ps"}),
+    ("memory usage", None, {"top", "ps"}),
+    # a bare fragment reaches memory tools through its expansion
+    ("show mem", None, {"htop", "ps"}),
+    # ...and a fragment the index uses as a word expands too ('dir' ->
+    # 'directory'), which is what makes ls win here instead of cat
+    ("dir contents", "ls", {"ls"}),
 ]
 
 
