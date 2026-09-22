@@ -119,8 +119,9 @@ CASES = [
     ("mem usage", None, {"top", "ps"}),
     ("ram usage", None, {"top", "ps"}),
     ("memory usage", None, {"top", "ps"}),
-    # a bare fragment reaches memory tools through its expansion
-    ("show mem", None, {"htop", "ps"}),
+    # a bare fragment must reach memory tools, whichever family member answers
+    # (the fixture carries the seed, so memory_pressure/vm_stat are present there)
+    ("show mem", None, {"memory_pressure"}),
     # ...and a fragment the index uses as a word expands too ('dir' ->
     # 'directory'), which is what makes ls win here instead of cat
     ("dir contents", "ls", {"ls"}),

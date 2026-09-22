@@ -403,6 +403,20 @@ SEED = [
      "list disks and partitions on linux"),
     ("free", LINUX, "display memory usage",
      "check free and used memory"),
+    ("users", ALL, "list the users logged in right now",
+     "see which users are logged in, who is on the machine"),
+    # memory, macos-flavoured - these had no curated intent at all, so the
+    # matcher was reaching them only through their *names* ("memory" matched
+    # memory_pressure by prefix). With names claimed exactly, the intent has to
+    # be written down: see docs/design/matching-rebuild.md.
+    ("memory_pressure", MACOS, "report and simulate macOS memory pressure",
+     "watch memory usage, check how much memory is free, see memory pressure (macOS)"),
+    ("vm_stat", MACOS, "show Mach virtual memory statistics",
+     "see free memory, pages and paging activity on macOS"),
+    ("leaks", MACOS, "search a process's memory for unreleased allocations",
+     "find memory leaks in a running program (macOS)"),
+    ("networkQuality", MACOS, "measure network download and upload speed",
+     "test internet speed from the terminal on macOS"),
     # ---- Windows: cmd.exe --------------------------------------------------
     ("dir", WINDOWS, "list directory contents (cmd.exe)",
      "list the files and folders in a directory (cmd)"),

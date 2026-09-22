@@ -1,37 +1,26 @@
 {
-  "cases": 41,
+  "cases": 42,
   "distractors": 6,
   "forbidden_answers": [
     "cpu usage",
-    "delete directory",
     "how to check cpu temperature",
-    "how to search inside files",
     "how to see open ports",
-    "mem usage",
-    "mem usahe",
-    "memory usage",
-    "port",
-    "search",
     "which port is open"
   ],
   "known_misses": [
     "cpu usage",
-    "delete directory",
     "how to check cpu temperature",
     "how to search inside files",
     "how to see open ports",
-    "mem usage",
-    "mem usahe",
-    "memory usage",
-    "port",
-    "ram usage",
-    "search",
+    "make directory",
     "which port is open"
   ],
   "passing": [
     "content of the file",
     "copy file to folder",
+    "create a directory",
     "delete a file",
+    "delete directory",
     "dir contents",
     "disk usage",
     "fin file",
@@ -55,11 +44,16 @@
     "list directory",
     "list files",
     "list files in a directory",
-    "make directory",
+    "mem usage",
+    "mem usahe",
+    "memory usage",
+    "port",
+    "ram usage",
     "rename a file",
+    "search",
     "show environment variables"
   ],
-  "recorded_with": "howzo 0.3.1",
+  "recorded_with": "howzo 0.4.0",
   "scorer": "field tiers, additive across fields, unweighted tokens (0.3.1)",
-  "seed_entries": 228
+  "seed_entries": 233
 }

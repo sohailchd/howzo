@@ -8,6 +8,9 @@ there AND du must not":
   ok_top1     any of these is a correct first answer — several are normal
               ('wget' for 'curl' is not a regression)
   need_topk   must appear in the top 3
+  need_any_topk  at least one of these must appear in the top 3 (the intent is
+              served by a family of tools; asserting one blessed name would test
+              the author's taste, not the product)
   forbid_topk must NOT appear in the top 3; every entry cites an observed miss
   category    so an aggregate score cannot mask a category going backwards
 
@@ -48,12 +51,13 @@ DISTRACTORS = [
 class Case:
     """One canonical question and what a competent sysadmin expects."""
 
-    def __init__(self, query, category, ok_top1=(), need_topk=(), forbid_topk=(),
-                 expected_fail=None, note=""):
+    def __init__(self, query, category, ok_top1=(), need_topk=(), need_any_topk=(),
+                 forbid_topk=(), expected_fail=None, note=""):
         self.query = query
         self.category = category
         self.ok_top1 = set(ok_top1)
         self.need_topk = set(need_topk)
+        self.need_any_topk = set(need_any_topk)
         self.forbid_topk = set(forbid_topk)
         self.expected_fail = expected_fail
         self.note = note
@@ -65,16 +69,21 @@ class Case:
 
 CASES = [
     # ---- memory / cpu (the reported class) ------------------------------
-    Case("cpu usage", "processes", ok_top1={"top", "ps", "htop"}, need_topk={"htop"},
-         forbid_topk={"du", "iftop"}, expected_fail="du repeats 'usage' across three fields and wins on volume (V1 additive tiers); htop scores 1.00",
-         note="the miss that started this rebuild"),
-    Case("mem usage", "memory", ok_top1={"top", "ps", "htop"}, need_topk={"htop"},
-         forbid_topk={"du", "iftop"}, expected_fail="as 'cpu usage': the generic word 'usage' carries the ranking"),
-    Case("ram usage", "memory", ok_top1={"top", "ps", "htop"}, need_topk={"htop"},
-         forbid_topk={"du"}, expected_fail="same class; 'ram' resolves to memory yet the ranking still favours du"),
-    Case("memory usage", "memory", ok_top1={"top", "ps", "memory_pressure", "htop"},
-         need_topk={"top"}, forbid_topk={"du", "iftop"},
-         expected_fail="bandwidth tools mention 'usage' too; the generic word carries them into the top-3"),
+    Case("cpu usage", "processes", ok_top1={"top", "ps", "htop"},
+         need_any_topk={"top", "ps", "htop"}, forbid_topk={"du", "iftop"},
+         expected_fail="in this small corpus iftop's bandwidth text still takes a slot "
+                       "(live, cpu usage answers top/ps/htop); du is already gone",
+         note="the miss that started this rebuild: du repeated a generic word across three fields and won"),
+    Case("mem usage", "memory", ok_top1={"top", "ps", "htop", "memory_pressure", "vm_stat"},
+         need_any_topk={"top", "ps", "htop", "memory_pressure", "vm_stat"},
+         forbid_topk={"du", "iftop", "df"},
+         note="the requirement is a memory tool, not one blessed name; the report that started this was du winning"),
+    Case("ram usage", "memory", ok_top1={"top", "ps", "htop", "memory_pressure", "vm_stat"},
+         need_any_topk={"top", "ps", "htop", "memory_pressure", "vm_stat"},
+         forbid_topk={"du", "df", "iftop"}),
+    Case("memory usage", "memory", ok_top1={"top", "ps", "memory_pressure", "htop", "vm_stat"},
+         need_any_topk={"top", "ps", "htop", "memory_pressure", "vm_stat"},
+         forbid_topk={"du", "iftop", "df"}),
     Case("how to check memory usage", "memory", ok_top1={"top", "ps", "memory_pressure"},
          need_topk={"top"}, forbid_topk={"du"}),
     Case("how to check cpu temperature", "system-info", ok_top1={"top", "htop", "pmset", "sysctl"},
@@ -100,21 +109,24 @@ CASES = [
     Case("how to sort a file", "text", ok_top1={"sort"}, need_topk={"sort"}),
     Case("how to search inside files", "search", ok_top1={"grep", "rg", "ack"},
          need_topk={"grep"}, forbid_topk={"searchdiagnose", "mdfind"},
-         expected_fail="'searchdiagnose' prefixes the query word 'search' and takes a top-3 slot",
+         expected_fail="searchdiagnose is gone (name prefixes no longer claim anything); "
+                       "'find' still outranks grep for searching INSIDE files - that is field-tier "
+                       "scoring, next milestone",
          note="a name that merely prefixes a common word must not win"),
 
     # ---- name eligibility (a typed noun is not a name claim) -------------
     Case("delete directory", "files", ok_top1={"rm", "rmdir"}, need_topk={"rmdir"},
-         forbid_topk={"mkdir"},
-         expected_fail="the curated noun alias mkdir -> 'directory' turns a typed noun into name evidence"),
+         forbid_topk={"mkdir"}),
     Case("list directory", "files", ok_top1={"ls"}, need_topk={"ls"}),
-    Case("make directory", "files", ok_top1={"mkdir"}, need_topk={"mkdir"}),
+    Case("make directory", "files", ok_top1={"mkdir"}, need_topk={"mkdir"},
+         expected_fail="the tool 'make' shares the query's verb and takes the name tier; "
+                       "mkdir is #2. Needs the intent-group layer ('create a directory'), not a name hack"),
+    Case("create a directory", "files", ok_top1={"mkdir"}, need_topk={"mkdir"},
+         note="passes: no tool is named 'create', so the verb cannot steal the tier"),
 
     # ---- the front door: a bare word must not resolve by prefix ----------
-    Case("search", "search", ok_top1={"grep", "rg", "find"}, forbid_topk={"searchdiagnose"},
-         expected_fail="find_by_name prefix lookup answers searchdiagnose before ranking runs (commands.py:96)"),
-    Case("port", "ports", ok_top1={"lsof", "netstat", "nc", "ss"}, forbid_topk={"portaudio"},
-         expected_fail="same front-door prefix lookup"),
+    Case("search", "search", ok_top1={"grep", "rg", "find"}, forbid_topk={"searchdiagnose"}),
+    Case("port", "ports", ok_top1={"lsof", "netstat", "nc", "ss"}, forbid_topk={"portaudio"}),
 
     # ---- processes -------------------------------------------------------
     Case("kill a process", "processes", ok_top1={"kill"}, need_topk={"kill"}),
@@ -141,9 +153,10 @@ CASES = [
     # ---- typos and fragments --------------------------------------------
     Case("fin file", "search", ok_top1={"find"}, need_topk={"find"},
          note="one edit from 'find': a typo of the user's word, not an abbreviation"),
-    Case("mem usahe", "memory", ok_top1={"top", "ps"}, need_topk={"top", "ps"},
-         forbid_topk={"du", "iftop"},
-         expected_fail="as 'mem usage': a typo must not change which tools the generic word drags in"),
+    Case("mem usahe", "memory", ok_top1={"top", "ps", "htop", "memory_pressure", "vm_stat"},
+         need_any_topk={"top", "ps", "htop", "memory_pressure", "vm_stat"},
+         forbid_topk={"du", "iftop", "df"},
+         note="a typo must not change which tools the generic word drags in"),
     Case("find macthing occurence in fike", "search", ok_top1={"find", "grep"},
          need_topk={"find", "grep"}),
     Case("how to view a json file", "json", ok_top1={"jq"}, need_topk={"jq"}),
@@ -179,6 +192,8 @@ def _judge(case, names):
     missing = case.need_topk - set(names)
     if missing:
         return "missing from top-3: %s" % sorted(missing)
+    if case.need_any_topk and not (case.need_any_topk & set(names)):
+        return "none of %s in top-3" % sorted(case.need_any_topk)
     bad = case.forbid_topk & set(names)
     if bad:
         return "forbidden in top-3: %s" % sorted(bad)

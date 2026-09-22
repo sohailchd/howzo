@@ -1,3 +1,5 @@
+import pytest
+
 from howzo import match
 
 
@@ -69,13 +71,37 @@ class TestRankRows:
                                name_toks=["delete", "dir"])
         assert [r["name"] for r in rows] == ["rm", "mkdir"]
 
-    def test_typed_token_still_earns_the_name_tier(self):
+    def test_typed_verb_alias_still_earns_the_name_tier(self):
+        # 'copy' is a curated verb alias: a typed 'copy' claims cp by name
+        cp = {"name": "cp", "oneliner": "copy files",
+              "when_to_use": "", "help_excerpt": ""}
+        rsync = {"name": "rsync", "oneliner": "a fast file-copying tool",
+                 "when_to_use": "copy files between hosts", "help_excerpt": ""}
+        rows = match.rank_rows([rsync, cp], ["copy"], name_toks=["copy"])
+        assert rows[0]["name"] == "cp"
+
+    def test_typed_noun_is_a_topic_not_a_name_claim(self):
+        # 'directory' is a noun the user typed - it must not claim mkdir, whose
+        # real evidence is its prose. Without this, "delete directory" answered
+        # mkdir instead of rm/rmdir.
         mkdir = {"name": "mkdir", "oneliner": "make directories",
-                 "when_to_use": "", "help_excerpt": ""}
+                 "when_to_use": "create a new folder or directory", "help_excerpt": ""}
         rm = {"name": "rm", "oneliner": "remove directory entries",
-              "when_to_use": "delete a directory", "help_excerpt": ""}
-        rows = match.rank_rows([mkdir, rm], ["directory"], name_toks=["directory"])
-        assert rows[0]["name"] == "mkdir"
+              "when_to_use": "delete a file or folder, remove files and directories",
+              "help_excerpt": ""}
+        rows = match.rank_rows([mkdir, rm], ["delete", "directory"],
+                               name_toks=["delete", "directory"])
+        assert rows[0]["name"] == "rm"
+
+    def test_name_prefix_is_not_a_name_claim(self):
+        """'search' must not claim searchdiagnose by sharing a prefix."""
+        diag = {"name": "searchdiagnose", "oneliner": "diagnose search issues",
+                "when_to_use": "", "help_excerpt": ""}
+        grep = {"name": "grep", "oneliner": "print lines matching a pattern",
+                "when_to_use": "search inside files, filter lines", "help_excerpt": ""}
+        rows = match.rank_rows([diag, grep], ["search", "files"],
+                               name_toks=["search", "files"])
+        assert rows[0]["name"] == "grep"
 
     def test_scoreless_rows_still_rank(self):
         a = {"name": "aaa", "oneliner": "open ports", "when_to_use": "", "help_excerpt": ""}
@@ -85,14 +111,35 @@ class TestRankRows:
 
 
 class TestFindByName:
-    def test_exact_and_prefix(self, c):
+    def test_exact_only(self, c):
         from howzo.db import upsert
         upsert(c, "jq", "brew", "1.7", "", "json processor")
         c.commit()
         assert match.find_by_name(c, "JQ")["name"] == "jq"
-        assert match.find_by_name(c, "j")["name"] == "jq"
         assert match.find_by_name(c, "qqq") is None
         assert match.find_by_name(c, "  ") is None
+
+    def test_a_prefix_is_not_a_different_tool(self, c):
+        # 'search' must not resolve to 'searchdiagnose': this path runs before
+        # ranking, so a loose prefix answers with the wrong tool outright
+        from howzo.db import upsert
+        upsert(c, "searchdiagnose", "system", "", "", "diagnose search issues")
+        upsert(c, "portaudio", "brew", "", "", "audio library")
+        c.commit()
+        assert match.find_by_name(c, "search") is None
+        assert match.find_by_name(c, "sea") is None
+        assert match.find_by_name(c, "port") is None
+        assert match.find_by_name(c, "searchdiagnose")["name"] == "searchdiagnose"
+
+    def test_versioned_binaries_still_resolve(self, c):
+        # build managers install versioned names; typing the base name is right
+        from howzo.db import upsert
+        upsert(c, "python3.13", "brew", "", "", "python interpreter")
+        upsert(c, "findrule5.34", "system", "", "", "File::Find::Rule wrapper")
+        c.commit()
+        assert match.find_by_name(c, "python")["name"] == "python3.13"
+        assert match.find_by_name(c, "findrule")["name"] == "findrule5.34"
+        assert match.find_by_name(c, "python3.14") is None
 
     def test_windows_exe_suffix(self, c, monkeypatch):
         # Windows indexes store .exe-suffixed names; a bare name must find them

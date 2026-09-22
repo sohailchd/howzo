@@ -210,11 +210,8 @@ def name_hits(c, toks):
     for t in toks:
         for r in c.execute("SELECT id FROM tools WHERE lower(name) = ?", (t,)):
             ids.add(r[0])
-        if len(t) >= 4:
-            for r in c.execute("SELECT id FROM tools WHERE lower(name) LIKE ?", (t + "%",)):
-                ids.add(r[0])
     for name, alias in NAME_ALIASES.items():
-        if any(_tok_in(t, [name, alias]) for t in toks):
+        if any(t == name or t == alias for t in toks):
             names = [name] + ([name + ".exe"] if os.name == "nt" else [])
             for n in names:
                 r = c.execute("SELECT id FROM tools WHERE name = ?", (n,)).fetchone()
@@ -227,10 +224,17 @@ def name_hits(c, toks):
 
 
 def find_by_name(c, q):
-    """Exact (case-insensitive) or prefix name lookup.
+    """Exact (case-insensitive) name lookup, plus the two cases where typing
+    less than the installed name is legitimate:
 
-    On Windows the index stores .exe-suffixed names, so a bare name
-    ('python') must also match 'python.exe'."""
+      - Windows stores .exe-suffixed names, so 'python' must find 'python.exe'
+      - build managers install versioned binaries, so 'python' must find
+        'python3.13' and 'findrule' must find 'findrule5.34'
+
+    Anything else that merely starts with the query is a different tool:
+    'search' is not 'searchdiagnose' and 'port' is not 'portaudio'. This runs
+    before any ranking, so a loose prefix here answers with the wrong tool
+    outright."""
     q = q.strip().lower()
     if not q:
         return None
@@ -240,23 +244,30 @@ def find_by_name(c, q):
     if row:
         return row
     for n in names:
-        row = c.execute("SELECT * FROM tools WHERE lower(name) LIKE ?", (n + "%",)).fetchone()
-        if row:
-            return row
+        pattern = re.compile(re.escape(n) + r"[0-9.]+\Z")
+        for r in c.execute("SELECT * FROM tools WHERE lower(name) LIKE ?"
+                           " ORDER BY name", (n + "%",)):
+            if pattern.match((r["name"] or "").lower()):
+                return r
     return None
 
 
 # Short utilities whose name is an abbreviation, not a stem: users type the
 # full word, and prefix-stemming can't bridge "cp" to "copy" (c-o-p-y does
-# not start with c-p). A query token that prefix-matches the alias word
-# counts as a NAME-tier hit for that tool.
+# not start with c-p). A query token that IS the alias word counts as a
+# NAME-tier hit for that tool.
+#
+# Only verbs belong here. A noun the user types ("directory", "folder") is a
+# topic, not a claim about a tool's name: with "mkdir": "directory" in this
+# table, a typed "delete directory" answered mkdir, whose real evidence is its
+# prose ("create a new folder or directory") - which is exactly what it should
+# be scored on. mkdir still wins "make directory" on that prose.
 NAME_ALIASES = {
     "cp": "copy",
     "mv": "move",
     "rm": "remove",
     "ln": "link",
     "ls": "list",
-    "mkdir": "directory",
 }
 
 # Query words that name a resource under a name the index never uses:
@@ -353,7 +364,12 @@ def rank_rows(rows, toks, platform=None, name_toks=None):
         when = (r["when_to_use"] or "").lower()
         oneliner = (r["oneliner"] or "").lower()
         excerpt = (r["help_excerpt"] or "").lower()
-        n_cov = sum(1 for t in typed if _tok_in(t, [name] + ([alias] if alias else [])))
+        # A tool is claimed by its own name or by a curated alias - never by a
+        # word that merely starts the same way. Prefix claims are how 'search'
+        # answered searchdiagnose, 'check' answered checkgid and 'memory'
+        # answered memory_pressure. With them gone, the curated data has to say
+        # what those tools are for (see howzo/seed.py).
+        n_cov = sum(1 for t in typed if t == name or (alias and t == alias))
         w_cov = sum(1 for t in toks if _tok_in(t, re.findall(r"[a-z0-9]+", when)))
         o_cov = sum(1 for t in toks if _tok_in(t, re.findall(r"[a-z0-9]+", oneliner)))
         e_cov = sum(1 for t in toks if _tok_in(t, re.findall(r"[a-z0-9]+", excerpt)))
