@@ -82,11 +82,19 @@ CASES = [
     Case("memory usage", "memory", ok_top1={"top", "ps", "memory_pressure", "htop", "vm_stat"},
          need_any_topk={"top", "ps", "htop", "memory_pressure", "vm_stat"},
          forbid_topk={"du", "iftop", "df"}),
-    Case("how to check memory usage", "memory", ok_top1={"top", "ps", "memory_pressure"},
-         need_topk={"top"}, forbid_topk={"du"}),
-    Case("how to check cpu temperature", "system-info", ok_top1={"top", "htop", "pmset", "sysctl"},
-         need_topk={"top"}, forbid_topk={"shasum", "checkgid"},
-         note="was answers shasum/checkgid: 'check' and 'cpu' matched obscure tool names first"),
+    Case("how to check memory usage", "memory",
+         ok_top1={"top", "ps", "memory_pressure", "htop", "vm_stat"},
+         need_any_topk={"top", "ps", "memory_pressure", "htop", "vm_stat"},
+         forbid_topk={"du"},
+         note="names a family, not one tool: top, ps, htop and memory_pressure all report "
+              "memory, and once the pack described more of them they traded places on bm25. "
+              "Requiring one specific viewer would test vocabulary, not correctness"),
+    Case("how to check cpu temperature", "system-info", ok_top1={"pmset", "sensors"},
+         need_any_topk={"pmset", "sensors"}, forbid_topk={"shasum", "checkgid", "checkuser"},
+         note="was answers shasum/checkgid: 'check' and 'cpu' matched obscure tool names first. "
+              "The expectation was also wrong: it used to require 'top', but a process viewer "
+              "reports utilisation, not temperature. The tools that do are pmset on macOS and "
+              "sensors on Linux, so the case now asserts one of those instead"),
 
     # ---- disk ------------------------------------------------------------
     Case("disk usage", "disk", ok_top1={"du", "df"}, need_topk={"du"}),
@@ -155,6 +163,34 @@ CASES = [
               "matches both concepts and 'open' is gone - a forbid violation, not a "
               "missing correct answer, which is why forbidden answers have their own gate"),
     Case("how to find ip address", "network", ok_top1={"ifconfig", "ip"}, need_topk={"ifconfig"}),
+
+    # ---- reading the machine's own hardware ------------------------------
+    # Reported from a Linux box: "find the processor name" answered top, lsof,
+    # find - a process viewer, an open-files tool, and a file search - because
+    # no entry described reading the chip's identity, so the generic words
+    # "find" and "name" decided it. Reproduced identically on macOS.
+    Case("find the processor name", "system-info",
+         ok_top1={"lscpu", "dmidecode", "lshw", "inxi", "system_profiler", "sysctl"},
+         need_any_topk={"lscpu", "dmidecode", "lshw", "inxi", "system_profiler", "sysctl"},
+         forbid_topk={"top", "ps", "htop", "lsof", "pgrep"},
+         note="the verb 'find' is a tool name and 'processor' was in no entry at all. "
+              "The forbid covers the process and file tools that answered it; the file-search "
+              "tool itself may still hold the third slot, because only two hardware tools are "
+              "native to any one platform and foreign rows sort last"),
+    Case("what cpu do i have", "system-info",
+         need_any_topk={"lscpu", "dmidecode", "lshw", "inxi", "system_profiler", "sysctl"},
+         note="answered top/ps/htop, which mention cpu in their prose and know nothing about "
+              "the chip. Only a hardware tool in the top-3 is asserted, not top-1: after "
+              "stopwords this query carries ONE concept, so every tool whose text says cpu "
+              "scores identically and a long process man page wins the tie. Separating them "
+              "needs the phrase layer, which is phase 3 of the research note - on a real "
+              "corpus system_profiler lands third, and that is the honest ceiling here"),
+    Case("how many cpu cores", "system-info",
+         ok_top1={"nproc", "lscpu", "sysctl", "system_profiler", "inxi"},
+         need_any_topk={"nproc", "lscpu", "sysctl", "system_profiler"}),
+    Case("cpu model", "system-info",
+         ok_top1={"lscpu", "dmidecode", "system_profiler", "sysctl", "lshw", "inxi"},
+         need_any_topk={"lscpu", "system_profiler", "sysctl", "dmidecode"}),
 
     # ---- archives / images / env ----------------------------------------
     Case("how to compress a folder", "compression", ok_top1={"zip", "tar", "gzip"}, need_topk={"zip"}),

@@ -1,5 +1,5 @@
 {
-  "cases": 45,
+  "cases": 49,
   "categories": {
     "archives": 1,
     "compression": 2,
@@ -13,7 +13,7 @@
     "processes": 4,
     "search": 4,
     "shell": 1,
-    "system-info": 1,
+    "system-info": 5,
     "text": 4
   },
   "distractors": 6,
@@ -23,6 +23,7 @@
     "check internet connection",
     "content of the file",
     "copy file to folder",
+    "cpu model",
     "cpu usage",
     "create a directory",
     "delete a file",
@@ -32,6 +33,8 @@
     "disk usage",
     "fin file",
     "find macthing occurence in fike",
+    "find the processor name",
+    "how many cpu cores",
     "how much disk space is left",
     "how to archive a folder",
     "how to check cpu temperature",
@@ -64,9 +67,10 @@
     "rename a file",
     "search",
     "show environment variables",
+    "what cpu do i have",
     "which port is open"
   ],
-  "recorded_with": "howzo 0.4.1",
+  "recorded_with": "howzo 0.4.3",
   "scorer": "per-concept best field, rarity-weighted (sqrt IDF); name tier exact",
-  "seed_entries": 234
+  "seed_entries": 240
 }

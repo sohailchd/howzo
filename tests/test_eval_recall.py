@@ -116,9 +116,11 @@ CASES = [
     # abbreviations/synonyms: 'mem' stems to the prose that spells 'memory',
     # and 'ram' expands to it. Without both, du (prose full of the generic
     # word 'usage') takes the memory slots instead of the memory tools.
-    ("mem usage", None, {"top", "ps"}),
-    ("ram usage", None, {"top", "ps"}),
-    ("memory usage", None, {"top", "ps"}),
+    ("mem usage", None, {"ps"}),   # the pack now describes memory_pressure and
+    # htop in enough detail to outrank top on bm25; all four are valid answers,
+    # so the family assertion lives in test_benchmark.py
+    ("ram usage", None, {"ps"}),
+    ("memory usage", None, {"ps"}),
     # a bare fragment must reach memory tools, whichever family member answers
     # (the fixture carries the seed, so memory_pressure/vm_stat are present there)
     ("show mem", None, {"memory_pressure"}),
